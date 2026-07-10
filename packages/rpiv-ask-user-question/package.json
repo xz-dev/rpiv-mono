@@ -27,9 +27,13 @@
 		"access": "public"
 	},
 	"scripts": {
-		"test": "vitest run"
+		"test": "vitest run",
+		"build:extension": "esbuild index.ts --bundle --platform=node --format=esm --external:@earendil-works/* --external:@juicesharp/* --external:@types/* --external:node:* --outfile=dist/extension.js",
+		"prepack": "npm run build:extension"
 	},
 	"files": [
+		"extension.js",
+		"dist/extension.js",
 		"ask-user-question.ts",
 		"rpc-fallback.ts",
 		"config.ts",
@@ -74,7 +78,7 @@
 	],
 	"pi": {
 		"extensions": [
-			"./index.ts"
+			"./extension.js"
 		]
 	},
 	"peerDependencies": {

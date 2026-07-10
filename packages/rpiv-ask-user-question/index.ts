@@ -33,7 +33,9 @@ type I18nLoader = {
 // pi-tui modules are not pulled into our load graph just to register strings.
 try {
 	const sdk = (await import("@juicesharp/rpiv-i18n/loader")) as I18nLoader;
-	sdk.registerLocalesFromDir(I18N_NAMESPACE, import.meta.url, { label: "rpiv-ask-user-question" });
+	sdk.registerLocalesFromDir(I18N_NAMESPACE, new URL("..", import.meta.url).toString(), {
+		label: "rpiv-ask-user-question",
+	});
 } catch {
 	// SDK absent — extension still loads with English-only UI.
 }
