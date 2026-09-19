@@ -68,7 +68,7 @@ describe("resolveCollapseKey", () => {
 	it("falls back to the default for typo'd modifiers and unknown key names", () => {
 		// `ctr+]` is the dangerous one: pi-tui's parseKeyId takes the LAST `+`-part as
 		// the key and ignores unknown parts, so an unvalidated `ctr+]` would match every
-		// bare `]` keypress and the raw terminal listener would consume them globally.
+		// bare `]` keypress instead of the intended modified shortcut.
 		expect(resolveCollapseKey({ collapseKey: "ctr+]" })).toBe(DEFAULT_COLLAPSE_KEY);
 		expect(resolveCollapseKey({ collapseKey: "control+]" })).toBe(DEFAULT_COLLAPSE_KEY);
 		expect(resolveCollapseKey({ collapseKey: "ctrl+nosuchkey" })).toBe(DEFAULT_COLLAPSE_KEY);

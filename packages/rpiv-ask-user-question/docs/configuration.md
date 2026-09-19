@@ -58,7 +58,7 @@ type are likewise dropped back to their default without a warning.
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| `collapseKey` | Key that collapses and expands the dialog overlay. | `"ctrl+]"` |
+| `collapseKey` | Key that folds and expands the dialog pane. | `"ctrl+]"` |
 | `guidance.description` | Full text of the tool description the model sees. Replaces the built-in default entirely — no merging. | built-in description |
 | `guidance.promptSnippet` | One-line snippet describing the tool in the system prompt. | built-in snippet |
 | `guidance.promptGuidelines` | List of usage guidelines given to the model. | 4 built-in guidelines |
@@ -77,8 +77,7 @@ named keys `escape`, `esc`, `enter`, `return`, `tab`, `space`, `backspace`, `del
 
 Examples that work: `"ctrl+]"`, `"alt+o"`, `"ctrl+shift+h"`, `"f9"`, `"ctrl+}"`.
 
-Set `"off"` (any casing) to disable the collapse shortcut entirely — no raw terminal
-listener is registered in that case.
+Set `"off"` (any casing) to disable the collapse shortcut entirely.
 
 A spec that does not match the grammar is rejected and the default is used. This is
 strict on purpose: Pi's parser takes the last `+`-separated part as the key and ignores
@@ -86,9 +85,8 @@ unknown parts, so a typo like `"ctr+]"` would otherwise silently capture every b
 keypress at the terminal level.
 
 The footer hint inside the dialog names whatever key you configure (`Alt+O to collapse`
-for `"alt+o"`), as do the collapsed one-line footer and the one-shot notification shown
-when the dialog is first hidden. With `"off"` the collapse hint is dropped from the
-footer entirely, since no shortcut can fire.
+for `"alt+o"`), as does the collapsed one-line footer. With `"off"` the collapse hint is
+dropped from the footer entirely, since no shortcut can fire.
 
 ### `guidance.description`, `guidance.promptSnippet` and `guidance.promptGuidelines`
 

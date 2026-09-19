@@ -50,7 +50,7 @@ function isValidCollapseKeySpec(spec: string): boolean {
 	// base key that is a single printable character or a named special key. A loose
 	// check is not enough — pi-tui's `parseKeyId` takes the LAST `+`-part as the key
 	// and ignores unknown parts, so a typo like `ctr+]` would silently match every
-	// bare `]` keypress (and the raw terminal listener would consume them globally).
+	// bare `]` keypress instead of the intended modified shortcut.
 	if (!spec) return false;
 	if (spec.startsWith("+") || spec.endsWith("+") || spec.includes("++")) return false;
 	const parts = spec.split("+");
