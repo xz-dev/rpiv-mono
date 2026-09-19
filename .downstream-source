@@ -1,0 +1,7 @@
+upstream_repository=https://github.com/juicesharp/rpiv-mono
+upstream_commit=0fdf4f813980d380e826b84d1280a4960e5d088e
+patch_ask_bottom_pane=d1c71a3d5bc811489298befd09b7bf759ded7bad
+source_commit=88959eaa04bb4039bfb6ded4fbf73c172e178a46
+projection_commit=943688cbd7df918442544c14e0383d91d4fd6a73
+source_dirty=false
+source_path=packages/rpiv-ask-user-question

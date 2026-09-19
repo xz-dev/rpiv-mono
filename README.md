@@ -1,106 +1,97 @@
-# rpiv-mono
+> [!IMPORTANT]
+> This branch is a generated downstream Git release. Product fixes live on full-monorepo patch branches; see [MAINTAIN.md](MAINTAIN.md) for provenance and rebuild rules.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/juicesharp/rpiv-mono/ci.yml?branch=main&label=CI)](https://github.com/juicesharp/rpiv-mono/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/juicesharp/rpiv-mono/branch/main/graph/badge.svg?v=2)](https://codecov.io/gh/juicesharp/rpiv-mono)
-[![tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/juicesharp/rpiv-mono/badges/tests.json)](https://github.com/juicesharp/rpiv-mono/actions/workflows/ci.yml)
+# @juicesharp/rpiv-ask-user-question
 
-Fifteen packages in one npm workspace: the **rpiv-pi** pipeline, the [Pi Agent](https://github.com/badlogic/pi-mono) extensions it composes, and the internal packages holding them up. Twelve publish to npm; three never leave the repo. Kept together so orchestration and tool surfaces evolve and ship in lockstep.
+[![npm version](https://img.shields.io/npm/v/@juicesharp/rpiv-ask-user-question.svg)](https://www.npmjs.com/package/@juicesharp/rpiv-ask-user-question)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Where to start:**
+<div align="center">
+  <a href="https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question">
+    <img src="https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/cover.png" alt="rpiv-ask-user-question cover: a tabbed terminal questionnaire asking Which real development task are we planning right now?, with numbered options — Bug fix, New feature, Refactor — each under a one-line description, and a footer of key hints" width="50%">
+  </a>
+</div>
 
-- **You want to use it** — `pi install npm:@juicesharp/rpiv-pi`, restart Pi, run `/rpiv-setup`. Full narrative, subagent map, and install walkthrough: [rpiv-pi.com](https://rpiv-pi.com).
-- **You want one piece of it** — every extension below stands alone. Pick a row from [Packages](#packages).
-- **You want to read or hack the code** — [Repo as a repo](#repo-as-a-repo) has the layout, the conventions, and what the git hooks enforce.
-- **You want to know where this is going** — [roadmap.md](./roadmap.md) for the structured view, [Roadmap](#roadmap) for the reasoning behind it.
+Let the model ask you instead of guessing. This extension gives [Pi Agent](https://github.com/badlogic/pi-mono) one tool — `ask_user_question` — that opens a terminal dialog of up to four questions with written-out options, and hands your choices back as structured data. Install it if you would rather spend fifteen seconds picking than an hour undoing a wrong assumption.
 
-## Packages
+## Install
 
-The pipeline needs most of them. **rpiv-args** expands shell-style `$1` and `$ARGUMENTS` placeholders inside skills, **rpiv-ask-user-question** lets the model put a structured questionnaire to the user instead of guessing, **rpiv-todo** keeps a live task overlay that survives `/reload` and compaction, **rpiv-advisor** escalates to a stronger reviewer model before the agent acts, **rpiv-web-tools** gives the model web search and fetch with pluggable providers, and **rpiv-workflow** chains skills into typed multi-stage pipelines (audited JSONL state, predicate routing, per-stage output validation) and ships the `/wf` command Pi calls to run them. A few exist because I wanted them inside Pi: **rpiv-btw** is a side-conversation pattern I got used to in Claude Code, **rpiv-voice** is on-device dictation for when I'd rather talk than type, and **rpiv-warp** integrates Pi with Warp terminal's notification system, because that's where I actually run Pi. **rpiv-i18n** is the one that came from users: it started as localization for ask-user-question and grew into a small SDK. And two are plumbing rather than products: **rpiv-config** is the shared config I/O every sibling depends on, published only so those dependencies resolve, and **rpiv-telemetry** wires Pi into MLflow — auto-instruments lifecycle events and sub-agent activity so runs are inspectable after the fact — but it stays `private: true` and is loaded from a checkout, never the registry.
+```sh
+pi install npm:@juicesharp/rpiv-ask-user-question
+```
 
-> [!TIP]
-> **For the full pipeline narrative, the subagent map, and install instructions, visit [rpiv-pi.com](https://rpiv-pi.com).**
+Restart your Pi session.
 
-### Pi extensions (published)
+## Quick start
 
-Each one installs on its own with `pi install npm:@juicesharp/rpiv-<name>`, then a Pi restart. `/rpiv-setup` (shipped by `rpiv-pi`) installs only the siblings the pipeline actually depends on; the rest are opt-in.
+Nothing to set up — the tool is live as soon as Pi restarts. Hand the model a task with a real decision buried in it:
 
-| Package | Role | Installed by `/rpiv-setup` | npm |
-| --- | --- | :---: | --- |
-| `rpiv-pi` | Pipeline (skills + subagents) | — *(it ships `/rpiv-setup`)* | [`@juicesharp/rpiv-pi`](https://www.npmjs.com/package/@juicesharp/rpiv-pi) |
-| `rpiv-args` | `$1` / `$ARGUMENTS` placeholders and `` !`cmd` `` substitution in skills | ✓ | [`@juicesharp/rpiv-args`](https://www.npmjs.com/package/@juicesharp/rpiv-args) |
-| `rpiv-ask-user-question` | Structured questionnaire to the user | ✓ | [`@juicesharp/rpiv-ask-user-question`](https://www.npmjs.com/package/@juicesharp/rpiv-ask-user-question) |
-| `rpiv-todo` | Live task overlay surviving `/reload` | ✓ | [`@juicesharp/rpiv-todo`](https://www.npmjs.com/package/@juicesharp/rpiv-todo) |
-| `rpiv-advisor` | Escalate to a stronger reviewer model | ✓ | [`@juicesharp/rpiv-advisor`](https://www.npmjs.com/package/@juicesharp/rpiv-advisor) |
-| `rpiv-web-tools` | Web search + fetch with pluggable providers | ✓ | [`@juicesharp/rpiv-web-tools`](https://www.npmjs.com/package/@juicesharp/rpiv-web-tools) |
-| `rpiv-i18n` | Localization SDK for sibling extensions | ✓ | [`@juicesharp/rpiv-i18n`](https://www.npmjs.com/package/@juicesharp/rpiv-i18n) |
-| `rpiv-workflow` | `/wf` runner — chain skills into typed multi-stage pipelines | ✓ | [`@juicesharp/rpiv-workflow`](https://www.npmjs.com/package/@juicesharp/rpiv-workflow) |
-| `rpiv-btw` | `/btw` side-conversation slash command | — | [`@juicesharp/rpiv-btw`](https://www.npmjs.com/package/@juicesharp/rpiv-btw) |
-| `rpiv-voice` | Local voice dictation (`/voice` overlay, on-device Whisper) | — | [`@juicesharp/rpiv-voice`](https://www.npmjs.com/package/@juicesharp/rpiv-voice) |
-| `rpiv-warp` | Warp terminal notification integration | — | [`@juicesharp/rpiv-warp`](https://www.npmjs.com/package/@juicesharp/rpiv-warp) |
+> Add caching to the API client.
 
-### Everything else in the workspace
+Rather than picking a strategy on your behalf, the model calls `ask_user_question` and a dialog takes over the bottom of your terminal. Move with `↑`/`↓`, choose with `Enter`, press `n` to attach a note to a question — or a global note to the whole questionnaire from the Submit tab — or land on the `Type something.` row to answer in your own words. While typing, `Shift+Enter` adds a line, `Ctrl+G` opens Pi's configured external editor, and `Ctrl+U` clears the draft; browsing another option and returning keeps what you wrote. `Esc` abandons the questionnaire entirely.
 
-Four packages you do not `pi install`. One is on npm as a library; three are `private: true` and resolve only inside a checkout.
+When the questionnaire begins waiting in an interactive TTY, it emits one standard terminal BEL (`\x07`). Your terminal configuration determines whether that appears as an audible alert, a visual alert, or nothing; redirected and non-TTY output is untouched.
 
-| Package | Role | How you get it |
+![Single question in the dialog: the tab strip reads Feature Type, Design Tab, Testing, Release, Submit; the question Which real development task are we planning right now? sits above four numbered options — Bug fix (Recommended), New feature, Refactor, Perf tuning — each with a one-line description, followed by the appended Type something. row](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/single-question.jpg)
+
+When the model asks several things at once, `Tab` moves between them and a Submit tab reviews everything before it goes back:
+
+![Submit tab of a four-question dialog: a Review your answers list showing Feature Type set to Bug fix and Testing set to Unit tests plus Integration tests, a warning naming Design Tab and Release as still unanswered, a picker offering Submit answers or Cancel, and a dim bottom key-hint row including n to add a note](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/submit-tab.jpg)
+
+## What you get
+
+- **Typed options instead of a wall of prose** — each question carries 2-4 authored choices, and every choice comes with a description of what it means or what it costs you.
+- **You can always answer in your own words** — a `Type something.` row is appended to every question, single- or multi-select, widens to the full pane while you type, keeps its multiline draft visible in that row while you browse, and supports Pi's `Shift+Enter` newline and `Ctrl+G` external-editor flows.
+- **Compare real artifacts, not just labels** — an option can carry a markdown `preview` (ASCII mockup, code, diagram, config) that renders in a bordered box beside the option list.
+- **One interruption, not five** — up to four questions arrive in a single tabbed dialog, and the Submit tab lists your answers and names anything still blank before you commit.
+- **Notes on any answer — or on all of them** — `n` opens a multiline note editor on any question tab, and on the Submit tab it opens one global note for the whole questionnaire. Per-question notes reach the model as `user notes: <text>`, the global note as `global note: <text>`; neither marks a question answered.
+- **Keep the transcript visible while answering** — the questionnaire renders as Pi's bottom pane, so the message viewport shrinks instead of being painted over. `Ctrl+]` still folds the pane to one row and restores it with your answers intact.
+- **Works outside the terminal too** — in RPC and ACP hosts such as the VS Code pendant or Zed the questionnaire walks through the host's native dialogs (notes are terminal-only and do not carry over), and in non-interactive runs the tool is removed from the model's tool list instead of failing every call.
+
+## Configuration
+
+Optional. Settings live in `~/.config/rpiv-ask-user-question/config.json`; the file is read, never written.
+
+| Setting | What it does | Default |
 | --- | --- | --- |
-| [`rpiv-config`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-config) | Shared XDG-aware JSON config I/O for the siblings | Published as a library: `npm install @juicesharp/rpiv-config`. Not a Pi extension — it registers nothing, and ten siblings already pull it in as a dependency. [npm](https://www.npmjs.com/package/@juicesharp/rpiv-config) |
-| [`rpiv-telemetry`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-telemetry) | MLflow observability — auto-instruments lifecycle + sub-agent activity | **Not published.** Inside this repo Pi loads it through the workspace symlink; elsewhere, point Pi at a checkout: `pi install ./packages/rpiv-telemetry` |
-| [`rpiv-site`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-site) | The [rpiv-pi.com](https://rpiv-pi.com) site (static Astro build) | **Not published.** Built from this repo with `npm run build:site`, deployed to GitHub Pages by CI |
-| [`test-utils`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/test-utils) | Shared test fixtures (`@juicesharp/rpiv-test-utils`) | **Not published.** Symlinked by npm workspaces; imported by the test suite only |
+| `collapseKey` | Key that folds and expands the dialog pane. Accepts Pi keybinding ids such as `alt+o`; `"off"` disables the shortcut. | `"ctrl+]"` |
+| `guidance.description` | Full replacement for the tool description the model sees. A non-empty string replaces the built-in text entirely — no merging. | built-in description |
+| `guidance.promptSnippet` | One-line description of the tool in the system prompt — tune how eagerly the model asks. | built-in snippet |
+| `guidance.promptGuidelines` | Usage guidelines given to the model, as a list of strings. | 4 built-in guidelines |
 
-## Roadmap
+```json
+{ "collapseKey": "alt+o" }
+```
 
-> [!NOTE]
-> For the structured, directional view — what's done, what's next, and what's possible — see the companion [**roadmap.md**](./roadmap.md). This section keeps the philosophy.
+Malformed JSON falls back to the defaults with a warning; an individual unusable value is silently dropped back to its default. Never an error.
 
-The realization shaping AI-assisted development right now is that LLMs produce correct code, not aligned code. The output compiles and passes tests, but it isn't enterprise-grade in the way human engineers produce: fitting the codebase's existing patterns, respecting conventions that aren't written down anywhere, making the boring choices mature systems rely on, staying reviewable and extensible by the next person who touches it. Closing that gap takes a driver: an experienced engineer who carries the context the model can't have, who frames the task correctly upfront, who steers architecture, who pushes back when output drifts. Without that active driver, the codebase fills with locally-correct, globally-misaligned diffs that look fine in PR review and erode the team's confidence over time.
+## Reference
 
-Misaligned code isn't zero-value, it's negative-value: it compiles, it ships, then it taxes every engineer who reads that file afterward and costs the next refactor a half-day of reasoning about near-duplicates that shouldn't exist. Worse, it quietly subtracts from the architecture's coherence in a way no PR review catches. Misaligned-diff throughput is alignment-debt throughput. The cost of a driver-in-the-loop pipeline is latency, paid up front and visible on a dashboard; the cost of skipping it is alignment debt, paid later, by someone else, and rarely traced back to the diff that caused it.
+- [Tool schema](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/tool-schema.md) — parameters, limits, reserved labels, validation errors, the result envelope, and the `rpiv:ask-user:prompt` event.
+- [Keyboard and layout](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/keyboard.md) — every key, the rows the dialog appends, notes, collapse mode, and how previews and overflow adapt to terminal size.
+- [Configuration](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/configuration.md) — file lookup and `XDG_CONFIG_HOME`, the `collapseKey` grammar, the `guidance.*` prompt overrides, and how invalid values are handled.
+- [Hosts and runtime behavior](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/hosts.md) — terminal vs RPC vs non-interactive, what degrades in each, and the load-failure envelopes.
+- [Localization](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/localization.md) — the nine shipped languages, how the locale is chosen, and how to add one.
 
-rpiv-pi exists to keep the driver meaningfully in the loop while the work moves at LLM speed. The pipeline asks the right questions at the right moments (ask-user-question), surfaces architectural decisions where they matter, and structures human involvement as participation rather than approval. The bet isn't that models will plateau. They'll keep getting better. The bet is that the structural conditions for fully autonomous coding (institutional knowledge availability, connector maturity, correctness and latency at enterprise scale) are a decade-scale problem absent a real breakthrough. For that whole interval, the realistic operating model is a driver in the loop. rpiv-pi is the engine for that loop: it writes and verifies code under expert supervision. A real enterprise harness, the layer that connects an engine like this to ticketing, CI, and an organization's institutional context, is a separate piece of work and not what this project is today. At Codemasters, we're about to start exploring how an engine like rpiv-pi could fit as part of a broader multi-chain experiment. Whether any of that surfaces back here is open.
+## Requirements
 
-In parallel, the pipeline is already viable on affordable open-weight models today (GLM-5.1, Kimi K2.5, MiMo-V2-Pro), and produces genuinely good results in practice. Output isn't yet at parity with frontier on the same task: more mistakes than I'd want, longer runs than I'd want. Closing that residual gap is the next set of work below. I'm assessing this as a CTO leading AI adoption at a mid-size company with no frontier-lab budget, where the cost difference matters: as of May 2026, GLM-5.1 lists at roughly a third of Claude Sonnet 4.6's output token price, and around a fifth of Opus 4.7's.
+- Node.js 22 or newer.
+- Pi Agent, with an interactive terminal or an RPC/ACP host. Non-interactive runs never see the tool.
+- A terminal at least 100 columns wide for side-by-side previews; narrower terminals stack the preview under the options.
 
-- **Verification under affordable-model runs.** The failure mode I see today on GLM/Kimi/MiMo isn't loud breakage; it's self-validation blindness, and it has two roots, not one. Same model is the obvious one: affordable-model work passes affordable-model verifiers, and only escalation to a frontier judge (currently Opus 4.7, May 2026) reliably catches the residual issues. The less obvious one is same context: a verifier that inherits the author's chat anchors on the same framings, ratifies instead of attacks, and writes tests that encode the author's mental model rather than probe it. Frontier escalation defeats the cost argument; isolation doesn't. The next round of work is experimenting with verification setups that lean on fresh-context isolation first and frontier escalation only where it earns its keep.
-- **Delegation strategy.** The pipeline's runtime cost is a function of how work is delegated across skills and subagents: what runs in parallel, what serially, which model handles which step, where verification fires. Some of the slowness on affordable-model runs is infrastructure-side and outside scope. The part that's tractable is finding the delegation pattern that minimizes total run cost without sacrificing output quality. This is an open optimization question, not a planned feature; the next round of work is experimenting with combinations and measuring what actually trades off against what.
+No native dependencies, no compiler, no API keys — the extension makes no model calls of its own.
 
-## Who built this
+## Troubleshooting
 
-Sergii Guslystyi. Software Architect and CTO at Codemasters International. Two decades building software, currently leading AI-first development adoption inside the company. rpiv-mono is a personal initiative, on my own time, where I prototype the patterns I'm working through professionally and put them in public for anyone to use, fork, or push back on.
+**The model says the questionnaire UI failed to load and asks its questions as chat text.** The dialog's modules were replaced on disk while Pi was running, usually by a package-manager install touching the store. Repair the install if it is broken, then restart Pi; the failure is not recoverable inside the running process.
 
-Find me on X: [@juicesharp](https://x.com/juicesharp).
+**`Ctrl+]` does nothing.** On keyboard layouts where `]` sits on the shifted layer (Latin American among them) the default is unreachable. Set `collapseKey` to something you can type, for example `"alt+o"`.
 
-## Repo as a repo
+## Related
 
-npm workspaces monorepo. Clone, `npm install` at the root, that's it. Node 22+ and npm 11+ (the `engines` floor).
+- [`@juicesharp/rpiv-i18n`](https://www.npmjs.com/package/@juicesharp/rpiv-i18n) — optional; installing it renders the dialog chrome in your language and adds `/languages`.
+- [`@juicesharp/rpiv-pi`](https://www.npmjs.com/package/@juicesharp/rpiv-pi) — the umbrella package whose workflow skills use `ask_user_question` as their developer checkpoint. `/rpiv-setup` offers to install this extension.
 
-A few choices worth naming up front:
+## License
 
-- No build step. Packages publish raw `.ts`; Pi loads TypeScript directly. No `dist/`, no per-package tsconfig.
-- One Vitest runner at the root walks every package. No per-package vitest configs.
-- Lockstep versions. All fifteen workspace packages share one version, enforced by `scripts/sync-versions.js` — published or not.
-- Releases are local-only by design. `node scripts/release.mjs <patch|minor|major|x.y.z>` cuts a release; no CI publish workflow.
-- Husky gates the work. `pre-commit` runs Biome and `tsc --noEmit` (fast); `pre-push` runs the full test suite with coverage thresholds. Tests don't block commits, they block pushes.
-- Single shared config across the workspace: one `biome.json`, one `tsconfig.base.json`, one `vitest.config.ts`.
-- Every README follows one shape — see [docs/readme-standard.md](./docs/readme-standard.md) before rewriting one.
-
-### Contributions
-
-Issues are welcome. PRs too, but please open an issue first if the change isn't trivial. The project has a definite shape and direction, and a quick conversation up front saves both of us a round-trip.
-
-## Status and expectations
-
-Started April 2026. MIT licensed.
-
-Single maintainer (me); Claude Code is a co-author on most commits.
-
-Actively maintained as a personal project. Issues triaged on best effort. Cadence may slow when the day job runs hot.
-
-## Pointers
-
-- Site: [rpiv-pi.com](https://rpiv-pi.com)
-- Roadmap: [roadmap.md](./roadmap.md)
-- README standard: [docs/readme-standard.md](./docs/readme-standard.md)
-- License: [MIT](./LICENSE)
-- X: [@juicesharp](https://x.com/juicesharp)
+MIT — see [LICENSE](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/LICENSE).
