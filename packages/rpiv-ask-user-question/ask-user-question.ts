@@ -1,12 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { isKeyRelease, isKeyRepeat, matchesKey, type OverlayHandle, type TUI } from "@earendil-works/pi-tui";
-import {
-	COLLAPSE_KEY_OFF,
-	formatKeySpecForDisplay,
-	loadConfig,
-	resolveCollapseKey,
-	validateGuidanceFields,
-} from "./config.js";
+import type { TUI } from "@earendil-works/pi-tui";
+import { loadConfig, resolveCollapseKey, validateGuidanceFields } from "./config.js";
 import {
 	ASK_USER_BLOCKED_EVENT,
 	ASK_USER_PROMPT_EVENT,
@@ -108,7 +102,6 @@ export const PREWARM_DELAY_MS = 2000;
 type SessionModule = typeof import("./state/questionnaire-session.js");
 
 type SessionRef = { current: import("./state/questionnaire-session.js").QuestionnaireSession | null };
-type OverlayHandleRef = { current: OverlayHandle | undefined };
 
 type SessionLoad =
 	| { ok: true; module: SessionModule }
@@ -145,41 +138,6 @@ export async function loadQuestionnaireSession(): Promise<SessionLoad> {
 }
 
 /**
- * Register the raw terminal listener that toggles collapse while the overlay is hidden.
- * Returns the remover, or undefined when the key is off / the host has no raw input hook —
- * callers derive `canReopenWhileHidden` from that.
- */
-function registerCollapseKeyListener(
-	ctx: ExtensionContext,
-	collapseKey: string,
-	sessionRef: SessionRef,
-	overlayHandleRef: OverlayHandleRef,
-): (() => void) | undefined {
-	if (collapseKey === COLLAPSE_KEY_OFF || typeof ctx.ui.onTerminalInput !== "function") return undefined;
-	let hasAnnouncedHide = false;
-	return ctx.ui.onTerminalInput((data) => {
-		const handle = overlayHandleRef.current;
-		if (!handle) return undefined;
-		// Only act while the questionnaire is hidden (its handleInput is
-		// unreachable) or actually focused. When some other overlay is on
-		// top (e.g. `/btw`), leave the keystroke to that overlay instead of
-		// toggling the questionnaire from underneath it.
-		if (!handle.isHidden() && !handle.isFocused()) return undefined;
-		if (!matchesKey(data, collapseKey as Parameters<typeof matchesKey>[1])) return undefined;
-		// Kitty-protocol terminals report press, repeat, and release separately.
-		// Toggle only on the initial press so a tap does not immediately reopen
-		// the overlay and a held key does not toggle it repeatedly.
-		if (isKeyRelease(data) || isKeyRepeat(data)) return { consume: true };
-		sessionRef.current?.toggleCollapsedExternal();
-		if (handle.isHidden() && !hasAnnouncedHide) {
-			hasAnnouncedHide = true;
-			ctx.ui.notify?.(`ask_user_question hidden — press ${formatKeySpecForDisplay(collapseKey)} to reopen`, "info");
-		}
-		return { consume: true };
-	});
-}
-
-/**
  * Build the `ctx.ui.custom` component factory: constructs the session (capturing it in
  * `sessionRef`) and exposes its component. `editInput` keeps its two dynamic imports —
  * they must stay lazy per-invocation.
@@ -189,11 +147,10 @@ function makeSessionFactory(config: {
 	typed: QuestionParams;
 	itemsByTab: WrappingSelectItem[][];
 	collapseKey: string;
-	canReopenWhileHidden: boolean;
 	sessionRef: SessionRef;
 	Session: SessionModule["QuestionnaireSession"];
 }) {
-	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, sessionRef, Session } = config;
+	const { ctx, typed, itemsByTab, collapseKey, sessionRef, Session } = config;
 	return (
 		tui: TUI,
 		theme: Theme,
@@ -225,7 +182,6 @@ function makeSessionFactory(config: {
 				}
 			},
 			collapseKey,
-			canReopenWhileHidden,
 		});
 		sessionRef.current = session;
 		return session.component;
@@ -354,17 +310,7 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 			// sentinel value `"off"` to disable the shortcut entirely.
 			const collapseKey = resolveCollapseKey(loadConfig());
 
-			// Capture the overlay handle so the session can call `setHidden()` when the
-			// user toggles collapse, and register a raw terminal input listener for the
-			// same key so the toggle still works while the overlay is hidden (pi-tui does
-			// not route input to a hidden overlay's `component.handleInput`).
 			const sessionRef: SessionRef = { current: null };
-			const overlayHandleRef: OverlayHandleRef = { current: undefined };
-			const removeOverlayInputListener = registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef);
-			// Hiding the overlay is only reversible through the raw listener above, so
-			// the session may emit `setHidden` only when it was actually registered;
-			// otherwise collapse falls back to the visible one-line row.
-			const canReopenWhileHidden = removeOverlayInputListener !== undefined;
 
 			emitAskUserBlockedEvent(pi, true);
 			try {
@@ -375,23 +321,9 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 						typed,
 						itemsByTab,
 						collapseKey,
-						canReopenWhileHidden,
 						sessionRef,
 						Session: QuestionnaireSession,
 					}),
-					{
-						overlay: true,
-						overlayOptions: {
-							anchor: "bottom-center",
-							width: "100%",
-							maxHeight: "100%",
-							margin: { left: 0, right: 0, bottom: 0 },
-						},
-						onHandle: (handle) => {
-							overlayHandleRef.current = handle;
-							sessionRef.current?.setOverlayHandle(handle);
-						},
-					},
 				);
 
 				if (result === undefined) {
@@ -400,7 +332,6 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 
 				return buildQuestionnaireResponse(result, typed);
 			} finally {
-				removeOverlayInputListener?.();
 				emitAskUserBlockedEvent(pi, false);
 			}
 		},

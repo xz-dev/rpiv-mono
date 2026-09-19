@@ -72,18 +72,13 @@ keystrokes edit the buffer, so `n` types an `n`. Pasted line breaks are preserve
 
 ## Collapse mode
 
-`Ctrl+]` gets the dialog out of the way: the overlay is marked hidden in Pi's overlay
-stack and shrinks to a single dim hint row, so the transcript it was covering becomes
-readable and chat scrolling resumes. Press the same key to bring the questionnaire back
-with your answers intact. The first time you collapse, Pi notifies you with the key to
-press — that message names your configured key.
+`Ctrl+]` folds the bottom pane to a single dim hint row. The transcript remains visible
+in either state because Pi reserves pane space instead of compositing the questionnaire
+over chat. Press the same key to expand it with your answers intact.
 
-Because Pi routes no input to a hidden overlay, the collapse key is additionally captured
-at the raw terminal level. It only acts when the questionnaire is hidden or focused, so a
-different overlay on top of it (for example `/btw`) keeps its keystrokes.
-
-While collapsed, every keystroke other than cancel is ignored, so you cannot mutate
-answers you cannot see.
+The pane keeps keyboard focus while collapsed, so no raw terminal listener or hidden-overlay
+recovery path is needed. Every keystroke other than cancel is ignored while collapsed, so
+you cannot mutate answers you cannot see.
 
 The default `ctrl+]` is free in Terminal.app, iTerm2, Warp, tmux, zellij and screen. On
 keyboard layouts where `]` sits on the shifted layer — Latin American `es-AR` / `es-MX`,
