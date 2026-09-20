@@ -23,7 +23,9 @@ jobs:
         with:
           ref: ci
           fetch-depth: 0
-          persist-credentials: false
+          # Keep the default GITHUB_TOKEN credential — the push step needs it
+          # (contents: write is already granted at the workflow level).
+          persist-credentials: true
 
       - name: Build integrated source candidate (upstream main + declared patches)
         run: |
