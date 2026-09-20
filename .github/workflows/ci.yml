@@ -57,7 +57,9 @@ jobs:
         with:
           files: coverage/lcov.info
           use_oidc: true
-          fail_ci_if_error: true
+          # Fork: codecov does not know xz-dev/rpiv-mono — don't fail the run.
+          fail_ci_if_error: false
+        continue-on-error: true
 
   badges:
     name: update test-count badge
