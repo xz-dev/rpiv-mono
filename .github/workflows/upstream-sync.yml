@@ -1,0 +1,85 @@
+name: 'Upstream Sync'
+
+on:
+  schedule:
+    # Daily at a random non-5-minute mark (GitHub delays/drops jobs near :00
+    # and the common 5-minute marks). 21:02 UTC == 05:02 Asia/Shanghai.
+    - cron: '2 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-sync-ask-user-question
+  cancel-in-progress: false
+
+jobs:
+  rebuild-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ci branch
+        uses: actions/checkout@v7
+        with:
+          ref: ci
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build integrated source candidate (upstream main + declared patches)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/juicesharp/rpiv-mono.git
+          git fetch upstream main
+          git fetch origin patch/ask-bottom-pane patch/ask-ctrl-c-clear release/ask-user-question
+
+          git checkout -B candidate upstream/main
+          # Product patches in MAINTAIN.md declared order.
+          git merge --no-edit origin/patch/ask-bottom-pane
+          git merge --no-edit origin/patch/ask-ctrl-c-clear
+
+      - name: Install dependencies
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Validate source candidate
+        run: |
+          npx vitest run packages/rpiv-ask-user-question
+          npx tsc --noEmit -p tsconfig.base.json
+          npx biome check --error-on-warnings packages/rpiv-ask-user-question
+
+      - name: Project release tree
+        run: |
+          rm -rf /tmp/release-out
+          scripts/project-ask-user-question.sh "$GITHUB_WORKSPACE" /tmp/release-out
+
+      - name: Validate projected package
+        working-directory: /tmp/release-out
+        run: npm pack --dry-run --json > /dev/null
+
+      - name: Require sync workflow token
+        env:
+          PUSH_TOKEN: ${{ secrets.SYNC_WORKFLOW_TOKEN }}
+        run: |
+          test -n "${PUSH_TOKEN}" || {
+            echo "::error::SYNC_WORKFLOW_TOKEN is required because GITHUB_TOKEN pushes do not trigger downstream workflows"
+            exit 1
+          }
+
+      - name: Commit and push rebuilt release branch
+        env:
+          PUSH_TOKEN: ${{ secrets.SYNC_WORKFLOW_TOKEN }}
+        run: |
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout -B release/ask-user-question origin/release/ask-user-question
+          rsync -a --delete --exclude='.git' /tmp/release-out/ "$GITHUB_WORKSPACE/"
+          if git diff --quiet HEAD; then
+            echo "No projected changes; release branch already up to date."
+            exit 0
+          fi
+          git add -A
+          git commit -m "build: project ask-user-question release tree"
+          git push --force-with-lease origin HEAD:release/ask-user-question
