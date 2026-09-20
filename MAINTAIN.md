@@ -6,6 +6,7 @@ This fork keeps upstream `main` compatible with `juicesharp/rpiv-mono` and publi
 
 - `main`: upstream-compatible mirror; never use it as the baseline for downstream patches.
 - `patch/ask-bottom-pane`: product patch in the original monorepo layout.
+- `patch/ask-ctrl-c-clear`: Ctrl+C clears the focused draft (custom-answer input, notes editor) via `app.clear` instead of cancelling the questionnaire.
 - `ci`: this maintenance policy and projection tooling.
 - `release/ask-user-question`: generated package-root tree for Pi Git installation.
 
@@ -14,7 +15,7 @@ This fork keeps upstream `main` compatible with `juicesharp/rpiv-mono` and publi
 1. Fetch and pin an exact upstream `main` commit.
 2. Create a clean full-monorepo source candidate from that commit.
 3. Apply selected upstream PR heads first, each pinned to an exact commit.
-4. Apply local product patch branches in their declared order.
+4. Apply local product patch branches in their declared order: `patch/ask-bottom-pane`, then `patch/ask-ctrl-c-clear`.
 5. Run focused and full integration checks in the monorepo candidate.
 6. Run `scripts/project-ask-user-question.sh SOURCE_ROOT EMPTY_OUTPUT_ROOT`.
 7. Validate the projected root with at least `npm pack --dry-run`.
