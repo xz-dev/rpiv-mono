@@ -31,7 +31,12 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git remote add upstream https://github.com/juicesharp/rpiv-mono.git
           git fetch upstream main
-          git fetch origin patch/ask-bottom-pane patch/ask-ctrl-c-clear release/ask-user-question
+          # Fetch patch/release refs into local branches so the projection script's
+          # `git rev-parse patch/<name>` provenance lookups resolve.
+          git fetch origin \
+            patch/ask-bottom-pane:patch/ask-bottom-pane \
+            patch/ask-ctrl-c-clear:patch/ask-ctrl-c-clear \
+            release/ask-user-question:release/ask-user-question
 
           # Keep the ci-owned projection script reachable after the worktree
           # switches to the candidate commit (it lives only on the ci branch).
@@ -40,8 +45,8 @@ jobs:
 
           git checkout -B candidate upstream/main
           # Product patches in MAINTAIN.md declared order.
-          git merge --no-edit origin/patch/ask-bottom-pane
-          git merge --no-edit origin/patch/ask-ctrl-c-clear
+          git merge --no-edit patch/ask-bottom-pane
+          git merge --no-edit patch/ask-ctrl-c-clear
 
       - name: Install dependencies
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -67,7 +72,7 @@ jobs:
 
       - name: Commit and push rebuilt release branch
         run: |
-          git checkout -B release/ask-user-question origin/release/ask-user-question
+          git checkout -B release/ask-user-question release/ask-user-question
           rsync -a --delete --exclude='.git' /tmp/release-out/ "$GITHUB_WORKSPACE/"
           if git diff --quiet HEAD; then
             echo "No projected changes; release branch already up to date."
