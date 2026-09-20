@@ -35,7 +35,8 @@ jobs:
 
           # Keep the ci-owned projection script reachable after the worktree
           # switches to the candidate commit (it lives only on the ci branch).
-          git worktree add /tmp/ci-tree ci
+          # --detach: the main worktree already occupies the `ci` branch ref.
+          git worktree add --detach /tmp/ci-tree origin/ci
 
           git checkout -B candidate upstream/main
           # Product patches in MAINTAIN.md declared order.
