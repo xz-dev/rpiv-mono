@@ -33,6 +33,10 @@ jobs:
           git fetch upstream main
           git fetch origin patch/ask-bottom-pane patch/ask-ctrl-c-clear release/ask-user-question
 
+          # Keep the ci-owned projection script reachable after the worktree
+          # switches to the candidate commit (it lives only on the ci branch).
+          git worktree add /tmp/ci-tree ci
+
           git checkout -B candidate upstream/main
           # Product patches in MAINTAIN.md declared order.
           git merge --no-edit origin/patch/ask-bottom-pane
@@ -54,26 +58,14 @@ jobs:
       - name: Project release tree
         run: |
           rm -rf /tmp/release-out
-          scripts/project-ask-user-question.sh "$GITHUB_WORKSPACE" /tmp/release-out
+          /tmp/ci-tree/scripts/project-ask-user-question.sh "$GITHUB_WORKSPACE" /tmp/release-out
 
       - name: Validate projected package
         working-directory: /tmp/release-out
         run: npm pack --dry-run --json > /dev/null
 
-      - name: Require sync workflow token
-        env:
-          PUSH_TOKEN: ${{ secrets.SYNC_WORKFLOW_TOKEN }}
-        run: |
-          test -n "${PUSH_TOKEN}" || {
-            echo "::error::SYNC_WORKFLOW_TOKEN is required because GITHUB_TOKEN pushes do not trigger downstream workflows"
-            exit 1
-          }
-
       - name: Commit and push rebuilt release branch
-        env:
-          PUSH_TOKEN: ${{ secrets.SYNC_WORKFLOW_TOKEN }}
         run: |
-          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git checkout -B release/ask-user-question origin/release/ask-user-question
           rsync -a --delete --exclude='.git' /tmp/release-out/ "$GITHUB_WORKSPACE/"
           if git diff --quiet HEAD; then
