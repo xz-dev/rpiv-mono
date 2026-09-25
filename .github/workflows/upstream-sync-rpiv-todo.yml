@@ -1,0 +1,83 @@
+name: 'Upstream Sync (rpiv-todo)'
+
+on:
+  schedule:
+    # Daily at a random non-5-minute mark (GitHub delays/drops jobs near :00
+    # and the common 5-minute marks). 21:27 UTC == 05:27 Asia/Shanghai.
+    - cron: '27 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-sync-rpiv-todo
+  cancel-in-progress: false
+
+jobs:
+  rebuild-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ci branch
+        uses: actions/checkout@v7
+        with:
+          ref: ci
+          fetch-depth: 0
+          # Keep the default GITHUB_TOKEN credential — the push step needs it
+          # (contents: write is already granted at the workflow level).
+          persist-credentials: true
+
+      - name: Build integrated source candidate (upstream main + declared patches)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/juicesharp/rpiv-mono.git
+          git fetch upstream main
+          # Fetch patch/release refs into local branches so the projection script's
+          # provenance lookups resolve.
+          git fetch origin \
+            feat/rpiv-todo-focus-window:feat/rpiv-todo-focus-window \
+            release/rpiv-todo:release/rpiv-todo
+
+          # Keep the ci-owned projection script reachable after the worktree
+          # switches to the candidate commit (it lives only on the ci branch).
+          # --detach: the main worktree already occupies the `ci` branch ref.
+          git worktree add --detach /tmp/ci-tree origin/ci
+
+          git checkout -B candidate upstream/main
+          # Product patches in MAINTAIN.md declared order.
+          git merge --no-edit feat/rpiv-todo-focus-window
+
+      - name: Install dependencies
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Validate source candidate
+        run: |
+          npx vitest run packages/rpiv-todo
+          npx tsc --noEmit -p tsconfig.base.json
+          npx biome check --error-on-warnings packages/rpiv-todo
+
+      - name: Project release tree
+        run: |
+          rm -rf /tmp/release-out
+          /tmp/ci-tree/scripts/project-rpiv-todo.sh "$GITHUB_WORKSPACE" /tmp/release-out
+
+      - name: Validate projected package
+        working-directory: /tmp/release-out
+        run: npm pack --dry-run --json > /dev/null
+
+      - name: Commit and push rebuilt release branch
+        run: |
+          git checkout -B release/rpiv-todo release/rpiv-todo
+          rsync -a --delete --exclude='.git' /tmp/release-out/ "$GITHUB_WORKSPACE/"
+          if git diff --quiet HEAD; then
+            echo "No projected changes; release branch already up to date."
+            exit 0
+          fi
+          git add -A
+          git commit -m "build: project rpiv-todo release tree"
+          git push --force-with-lease origin HEAD:release/rpiv-todo
