@@ -38,6 +38,7 @@ jobs:
           git fetch origin \
             feat/rpiv-todo-focus-window:feat/rpiv-todo-focus-window \
             feat/rpiv-todo-stale-completed-fade:feat/rpiv-todo-stale-completed-fade \
+            feat/rpiv-todo-active-strip:feat/rpiv-todo-active-strip \
             release/rpiv-todo:release/rpiv-todo
 
           # Keep the ci-owned projection script reachable after the worktree
@@ -49,6 +50,7 @@ jobs:
           # Product patches in MAINTAIN.md declared order.
           git merge --no-edit feat/rpiv-todo-focus-window
           git merge --no-edit feat/rpiv-todo-stale-completed-fade
+          git merge --no-edit feat/rpiv-todo-active-strip
 
       - name: Install dependencies
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
