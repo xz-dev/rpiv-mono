@@ -1,0 +1,7 @@
+upstream_repository=https://github.com/juicesharp/rpiv-mono
+upstream_commit=d74b1c99830a565f3df3f37e0a36616d17ffc574
+patch_todo_focus_window=e9b0eea09833ac13774bd8be76a294fafb50654d
+source_commit=e9b0eea09833ac13774bd8be76a294fafb50654d
+projection_commit=1241f838a05afb28e131624e44714fa26c460623
+source_dirty=false
+source_path=packages/rpiv-todo
