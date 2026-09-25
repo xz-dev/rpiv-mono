@@ -56,6 +56,7 @@ mv -- "$readme_tmp" "$output_root/README.md"
 source_commit=$(git -C "$source_root" rev-parse HEAD)
 upstream_commit=${UPSTREAM_COMMIT:-$(git -C "$source_root" rev-parse upstream/main)}
 patch_todo_focus_window=${PATCH_TODO_FOCUS_WINDOW:-$(git -C "$source_root" rev-parse feat/rpiv-todo-focus-window)}
+patch_todo_stale_completed_fade=${PATCH_TODO_STALE_COMPLETED_FADE:-$(git -C "$source_root" rev-parse feat/rpiv-todo-stale-completed-fade)}
 projection_commit=$(git -C "$ci_root" rev-parse HEAD)
 source_dirty=false
 [[ -n $(git -C "$source_root" status --porcelain) ]] && source_dirty=true
@@ -63,6 +64,7 @@ cat >"$output_root/.downstream-source" <<EOF
 upstream_repository=https://github.com/juicesharp/rpiv-mono
 upstream_commit=$upstream_commit
 patch_todo_focus_window=$patch_todo_focus_window
+patch_todo_stale_completed_fade=$patch_todo_stale_completed_fade
 source_commit=$source_commit
 projection_commit=$projection_commit
 source_dirty=$source_dirty
