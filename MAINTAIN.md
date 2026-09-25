@@ -9,6 +9,7 @@ This fork keeps upstream `main` compatible with `juicesharp/rpiv-mono` and publi
 - `patch/ask-ctrl-c-clear`: Ctrl+C clears the focused draft (custom-answer input, notes editor) via `app.clear` instead of cancelling the questionnaire.
 - `feat/rpiv-todo-focus-window`: overflowing overlay lists render a focus window anchored at the first unfinished task, backfilling from earlier tasks, with `… N earlier` / `… N later` markers. Intended for an upstream PR.
 - `feat/rpiv-todo-stale-completed-fade`: overlay keeps only the 3 most recently completed tasks (`completedSeq` stamped on completion, persisted in the snapshot); replaces turn-boundary hiding. Stacked on `feat/rpiv-todo-focus-window`. Intended for an upstream PR.
+- `feat/rpiv-todo-active-strip`: every in_progress task renders above the focus window (active strip), capped with a `… N more active` marker under the row budget; relaxes the single-in_progress guidance for parallel work. Stacked on `feat/rpiv-todo-stale-completed-fade`. Intended for an upstream PR.
 - `ci`: this maintenance policy and projection tooling.
 - `release/ask-user-question`: generated package-root tree for Pi Git installation.
 - `release/rpiv-todo`: generated package-root tree for Pi Git installation.
@@ -20,7 +21,7 @@ This fork keeps upstream `main` compatible with `juicesharp/rpiv-mono` and publi
 3. Apply selected upstream PR heads first, each pinned to an exact commit.
 4. Apply the release's local product patch branches in their declared order:
    - `release/ask-user-question`: `patch/ask-bottom-pane`, then `patch/ask-ctrl-c-clear`.
-   - `release/rpiv-todo`: `feat/rpiv-todo-focus-window`, then `feat/rpiv-todo-stale-completed-fade` (stacked).
+   - `release/rpiv-todo`: `feat/rpiv-todo-focus-window`, then `feat/rpiv-todo-stale-completed-fade`, then `feat/rpiv-todo-active-strip` (stacked).
 5. Run focused and full integration checks in the monorepo candidate.
 6. Run the release's projection script with `SOURCE_ROOT EMPTY_OUTPUT_ROOT`:
    - `release/ask-user-question`: `scripts/project-ask-user-question.sh`.
