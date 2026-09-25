@@ -7,6 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Overflowing overlay lists now render a focused window anchored at the first
+  unfinished task in display order, backfilling from earlier tasks so the
+  window stays full, with `… N earlier` / `… N later` markers for the hidden
+  sides; at the minimum row budget, where two marker rows do not fit, both
+  hidden sides fold into a single plain `+N more` row.
+
 ## [2.11.0] - 2026-09-21
 
 ## [2.10.1] - 2026-09-13
