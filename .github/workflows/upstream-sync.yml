@@ -38,6 +38,7 @@ jobs:
           git fetch origin \
             patch/ask-bottom-pane:patch/ask-bottom-pane \
             patch/ask-ctrl-c-clear:patch/ask-ctrl-c-clear \
+            patch/ask-preserve-cursor:patch/ask-preserve-cursor \
             release/ask-user-question:release/ask-user-question
 
           # Keep the ci-owned projection script reachable after the worktree
@@ -49,6 +50,7 @@ jobs:
           # Product patches in MAINTAIN.md declared order.
           git merge --no-edit patch/ask-bottom-pane
           git merge --no-edit patch/ask-ctrl-c-clear
+          git merge --no-edit patch/ask-preserve-cursor
 
       - name: Install dependencies
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
