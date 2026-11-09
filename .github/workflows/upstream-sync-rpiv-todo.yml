@@ -60,13 +60,8 @@ jobs:
       - run: npm ci
 
       - name: Validate source candidate
-        # todo.codemode-replay.test.ts fails on 2 tests on a clean upstream/main
-        # (ModelRuntime.create wiring — pre-existing upstream breakage).
-        # We still want vitest to surface NEW failures, so run the rest of
-        # the suite gated and that one file tolerated.
         run: |
-          npx vitest run packages/rpiv-todo --exclude '**/todo.codemode-replay.test.ts'
-          npx vitest run packages/rpiv-todo/todo.codemode-replay.test.ts || echo "::warning::pre-existing codemode-replay failure (upstream-known)"
+          npx vitest run packages/rpiv-todo
           npx tsc --noEmit -p tsconfig.base.json
           npx biome check --error-on-warnings packages/rpiv-todo
 
