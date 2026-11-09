@@ -55,9 +55,12 @@ mv -- "$readme_tmp" "$output_root/README.md"
 
 source_commit=$(git -C "$source_root" rev-parse HEAD)
 upstream_commit=${UPSTREAM_COMMIT:-$(git -C "$source_root" rev-parse upstream/main)}
-patch_todo_focus_window=${PATCH_TODO_FOCUS_WINDOW:-$(git -C "$source_root" rev-parse feat/rpiv-todo-focus-window)}
-patch_todo_stale_completed_fade=${PATCH_TODO_STALE_COMPLETED_FADE:-$(git -C "$source_root" rev-parse feat/rpiv-todo-stale-completed-fade)}
-patch_todo_active_strip=${PATCH_TODO_ACTIVE_STRIP:-$(git -C "$source_root" rev-parse feat/rpiv-todo-active-strip)}
+
+# Optional patch-branch provenance — resolve each ref only if it exists.
+resolve_patch() { git -C "$source_root" rev-parse --verify --quiet "$1" || echo "retired"; }
+patch_todo_focus_window=$(resolve_patch feat/rpiv-todo-focus-window)
+patch_todo_stale_completed_fade=$(resolve_patch feat/rpiv-todo-stale-completed-fade)
+patch_todo_active_strip=$(resolve_patch feat/rpiv-todo-active-strip)
 projection_commit=$(git -C "$ci_root" rev-parse HEAD)
 source_dirty=false
 [[ -n $(git -C "$source_root" status --porcelain) ]] && source_dirty=true
