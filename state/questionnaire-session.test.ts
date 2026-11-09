@@ -2,9 +2,10 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
 import { makeTheme } from "@juicesharp/rpiv-test-utils";
 import { describe, expect, it, vi } from "vitest";
-import type { QuestionnaireResult, QuestionParams } from "../tool/types.js";
-import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
-import { QuestionnaireSession } from "./questionnaire-session.js";
+import { buildQuestionnaireResponse } from "../tool/response-envelope.ts";
+import type { QuestionnaireResult, QuestionParams } from "../tool/types.ts";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.ts";
+import { QuestionnaireSession } from "./questionnaire-session.ts";
 
 const DOWN = "\x1b[B";
 const UP = "\x1b[A";
@@ -85,6 +86,11 @@ function makeSession(options: SessionTestOptions = {}) {
 		keybindings: options.keybindings ?? keybindings,
 		editInput: options.editInput ?? (async () => undefined),
 		collapseKey: "off",
+		notesKey: "n",
+		previewScrollUpKey: "pageup",
+		previewScrollDownKey: "pagedown",
+		canReopenWhileHidden: false,
+		rowBudget: (rows) => rows,
 	});
 	return { session, done };
 }
@@ -95,6 +101,38 @@ function focusCustomAnswer(session: QuestionnaireSession): void {
 }
 
 describe("QuestionnaireSession — custom-answer drafts", () => {
+	it("answers with a row's digit like Enter on it", () => {
+		const { session, done } = makeSession();
+		session.dispatch("2");
+		expect(done).toHaveBeenCalledWith({
+			answers: [{ questionIndex: 0, question: "Which?", kind: "option", answer: "B" }],
+			cancelled: false,
+		});
+	});
+
+	it("the Type something. row's digit focuses it without typing itself", () => {
+		const { session, done } = makeSession();
+		session.dispatch("3");
+		session.dispatch("4");
+		session.dispatch("2");
+		session.dispatch(ENTER);
+		expect(done).toHaveBeenCalledWith({
+			answers: [{ questionIndex: 0, question: "Which?", kind: "custom", answer: "42" }],
+			cancelled: false,
+		});
+	});
+
+	it("types a digit as text inside Type something.", () => {
+		const { session, done } = makeSession();
+		focusCustomAnswer(session);
+		session.dispatch("1");
+		session.dispatch(ENTER);
+		expect(done).toHaveBeenCalledWith({
+			answers: [{ questionIndex: 0, question: "Which?", kind: "custom", answer: "1" }],
+			cancelled: false,
+		});
+	});
+
 	it("preserves a draft while browsing options and restores it on return", () => {
 		const { session, done } = makeSession();
 		focusCustomAnswer(session);
@@ -160,11 +198,7 @@ describe("QuestionnaireSession — custom-answer drafts", () => {
 		session.dispatch("discard me");
 		session.dispatch(CTRL_U);
 		session.dispatch(ENTER);
-
-		expect(done).toHaveBeenCalledWith({
-			answers: [expect.objectContaining({ kind: "custom", answer: null })],
-			cancelled: false,
-		});
+		expect(done).not.toHaveBeenCalled(); // a cleared draft is not an answer (#301)
 	});
 
 	it("replaces the inline draft with the external editor result", async () => {
@@ -290,11 +324,133 @@ describe("QuestionnaireSession — custom-answer drafts", () => {
 		session.dispatch(UP);
 		session.dispatch(TAB);
 		session.dispatch(TAB);
-		// Revisiting the custom-answered tab refocuses its input with the confirmed text.
 		expect(session.component.render(120).join("\n")).toContain("first-latest");
 
-		session.dispatch(UP);
 		session.dispatch(TAB);
 		expect(session.component.render(120).join("\n")).toContain("second");
+	});
+});
+
+describe("QuestionnaireSession — multi-select custom text joins checked options (#188)", () => {
+	const SPACE = " ";
+	const multiParams: QuestionParams = {
+		questions: [{ ...params.questions[0]!, multiSelect: true }],
+	};
+	const multiItems: WrappingSelectItem[][] = [
+		[...itemsFor(multiParams)[0]!, { kind: "next" as const, label: "Next" }],
+	];
+	const both = {
+		answers: [{ questionIndex: 0, question: "Which?", kind: "multi", answer: "my text", selected: ["A"] }],
+		cancelled: false,
+	};
+
+	function checkAThenType(): ReturnType<typeof makeSession> {
+		const made = makeSession({ params: multiParams, itemsByTab: multiItems });
+		made.session.dispatch(SPACE); // check A
+		focusCustomAnswer(made.session);
+		made.session.dispatch("my text");
+		return made;
+	}
+
+	it("Enter in the custom input submits the checked options AND the text", () => {
+		const { session, done } = checkAThenType();
+		session.dispatch(ENTER);
+		expect(done).toHaveBeenCalledWith(both);
+		expect(buildQuestionnaireResponse(done.mock.calls[0]![0], multiParams).content[0]!.text).toContain(
+			'"Which?"="A, my text"',
+		);
+	});
+
+	it("Next submits the checked options AND the text", () => {
+		const { session, done } = checkAThenType();
+		session.dispatch(DOWN); // leave the input for Next
+		session.dispatch(ENTER);
+		expect(done).toHaveBeenCalledWith(both);
+	});
+
+	it("the custom row is checked while it holds text and unchecked once cleared", () => {
+		const { session } = checkAThenType();
+		expect(session.component.render(120).join("\n")).toMatch(/\[✔\] my text/);
+		session.dispatch(CTRL_U);
+		expect(session.component.render(120).join("\n")).toMatch(/3\. \[ \]/);
+	});
+});
+
+describe("QuestionnaireSession — a saved note stays visible (#197)", () => {
+	const NOTE_LABEL = "Note for this answer:";
+	const view = (session: QuestionnaireSession) => session.component.render(120).join("\n");
+	function saveNote(session: QuestionnaireSession, text: string): void {
+		session.dispatch("n");
+		session.dispatch(text);
+		session.dispatch(ENTER); // closes the notes editor, keeping the note
+	}
+
+	it("shows the note on the question tab once its editor closes", () => {
+		const { session } = makeSession();
+		expect(view(session)).not.toContain(NOTE_LABEL);
+		saveNote(session, "remember the cache");
+		expect(view(session)).toContain(`${NOTE_LABEL} remember the cache`);
+	});
+
+	it("keeps a multi-line note to one row", () => {
+		const { session } = makeSession();
+		session.dispatch("n");
+		session.dispatch("first line");
+		session.dispatch(SHIFT_ENTER);
+		session.dispatch("second line");
+		session.dispatch(ENTER);
+		const lines = session.component.render(120).filter((l) => l.includes(NOTE_LABEL));
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toContain("first line …");
+		expect(view(session)).not.toContain("second line");
+	});
+
+	it("a note row keeps the cross-tab dialog height when the body leaves room", () => {
+		const taller = {
+			question: "Second?",
+			header: "Second",
+			options: ["A", "B", "C", "D"].map((label) => ({ label, description: label.toLowerCase() })),
+		};
+		const p: QuestionParams = {
+			questions: [{ ...params.questions[0]!, question: "First?", header: "First" }, taller],
+		};
+		const { session } = makeSession({ params: p });
+		const height = session.component.render(120).length;
+		saveNote(session, "remember the cache"); // on the shorter First tab
+		expect(view(session)).toContain(`${NOTE_LABEL} remember the cache`);
+		expect(session.component.render(120).length).toBe(height);
+		session.dispatch(TAB);
+		expect(session.component.render(120).length).toBe(height);
+	});
+
+	it("labels the note the same way on the review tab", () => {
+		const twoQuestions: QuestionParams = {
+			questions: [
+				{ ...params.questions[0]!, question: "First?", header: "First" },
+				{ ...params.questions[0]!, question: "Second?", header: "Second" },
+			],
+		};
+		const { session } = makeSession({ params: twoQuestions });
+		saveNote(session, "remember the cache");
+		session.dispatch(ENTER); // answer First, advancing to Second
+		session.dispatch(TAB); // Submit tab
+		const review = view(session);
+		expect(review).toContain(`${NOTE_LABEL} remember the cache`);
+		expect(review).not.toContain("notes: remember the cache");
+	});
+});
+
+describe("QuestionnaireSession — collapsed row with collapseKey 'off'", () => {
+	it("renders the cancel-only line, never a literal 'Off to expand' (#176)", () => {
+		// The router and raw listener never collapse when off, but
+		// toggleCollapsedExternal() is a public ungated entry — the collapsed row
+		// must not advertise a disabled shortcut if a caller forces it.
+		const { session } = makeSession();
+		session.toggleCollapsedExternal();
+		const collapsed = session.component.render(120);
+		expect(collapsed).toHaveLength(1);
+		expect(collapsed[0]).toContain("Esc to cancel");
+		expect(collapsed[0]).not.toContain("to expand");
+		expect(collapsed[0]).not.toContain("Off");
 	});
 });

@@ -1,7 +1,7 @@
 import { Key, matchesKey } from "@earendil-works/pi-tui";
-import type { QuestionAnswer } from "../tool/types.js";
-import { ROW_INTENT_META } from "./row-intent.js";
-import type { QuestionnaireRuntime, QuestionnaireState } from "./state.js";
+import type { QuestionAnswer } from "../tool/types.ts";
+import { ROW_INTENT_META } from "./row-intent.ts";
+import type { QuestionnaireRuntime, QuestionnaireState } from "./state.ts";
 
 const KEYBIND_UP = "tui.select.up";
 const KEYBIND_DOWN = "tui.select.down";
@@ -16,7 +16,31 @@ const KEYBIND_EXTERNAL_EDITOR = "app.editor.external";
 const KEYBIND_APP_CLEAR = "app.clear";
 
 const NOTES_ACTIVATE_KEY = "n";
-const SPACE_KEY = " ";
+
+/**
+ * The notes shortcut. A single-character key matches the character as typed, so a
+ * non-Latin one works (pi-tui's key parser knows only ASCII); anything else matches as
+ * a pi-tui key spec. A non-string key — a stale outer module, as with `collapseKey`
+ * below — falls back to `n`.
+ */
+function matchesNotesKey(data: string, notesKey: unknown): boolean {
+	const key = typeof notesKey === "string" ? notesKey : NOTES_ACTIVATE_KEY;
+	return data === key || matchesKey(data, key as Parameters<typeof matchesKey>[1]);
+}
+
+/**
+ * Rows scrolled per PageUp/PageDown press. Deliberately close to the stacked-layout
+ * content budget (~11) so one press roughly equals one screenful in either layout;
+ * the renderer clamps the offset to the actual overflow either way.
+ */
+export const PREVIEW_SCROLL_STEP = 10;
+
+/**
+ * Guard against unbounded growth when the target preview has no overflow the reducer
+ * can observe (pure state machine — no render metrics). The view clamps to the real
+ * content length; this cap only keeps the state value sane.
+ */
+export const PREVIEW_SCROLL_MAX = 1000;
 
 export type QuestionnaireAction =
 	| { kind: "nav"; nextIndex: number; inputValue: string }
@@ -26,7 +50,7 @@ export type QuestionnaireAction =
 	| { kind: "tab_switch"; nextTab: number }
 	| { kind: "confirm"; answer: QuestionAnswer; autoAdvanceTab?: number }
 	| { kind: "toggle"; index: number }
-	| { kind: "multi_confirm"; selected: string[]; autoAdvanceTab?: number }
+	| { kind: "multi_confirm"; selected: string[]; answer: string | null; autoAdvanceTab?: number }
 	| { kind: "cancel" }
 	| { kind: "notes_enter" }
 	| { kind: "notes_exit" }
@@ -36,6 +60,12 @@ export type QuestionnaireAction =
 	| { kind: "notes_forward"; data: string }
 	/** Flip `state.collapsed`. Always available, regardless of inner mode (see top intercept in `routeKey`). */
 	| { kind: "toggle_collapsed" }
+	/**
+	 * Scroll the focused option's preview by `delta` rows (PageUp/PageDown). Routed only
+	 * on question tabs where the focused row is a preview-bearing option; the reducer
+	 * clamps at 0 and the view layer clamps to the real overflow.
+	 */
+	| { kind: "preview_scroll"; delta: number }
 	| { kind: "ignore" };
 
 export interface QuestionnaireKeybindings {
@@ -82,12 +112,15 @@ function buildSingleSelectAnswer(state: QuestionnaireState, runtime: Questionnai
 	const item = runtime.currentItem;
 
 	if (state.inputMode) {
+		// A blank draft is not an answer (#301): Enter stays on the row instead of recording
+		// an empty custom answer. Skipping a question is the Submit tab's `unanswered:` path.
 		const label = runtime.inputBuffer;
+		if (label.trim().length === 0) return null;
 		return {
 			questionIndex: state.currentTab,
 			question: q.question,
 			kind: "custom",
-			answer: label.length > 0 ? label : null,
+			answer: label,
 		};
 	}
 	if (!item) return null;
@@ -116,6 +149,15 @@ function buildMultiSelected(state: QuestionnaireState, runtime: QuestionnaireRun
 		}
 	}
 	return out;
+}
+
+function buildMultiConfirmAction(state: QuestionnaireState, runtime: QuestionnaireRuntime): QuestionnaireAction {
+	return {
+		kind: "multi_confirm",
+		selected: buildMultiSelected(state, runtime),
+		answer: runtime.inputBuffer.trim().length > 0 ? runtime.inputBuffer : null,
+		autoAdvanceTab: computeAutoAdvanceTab(state, runtime),
+	};
 }
 
 function tabSwitchAction(
@@ -180,6 +222,8 @@ function routeInputMode(
 	// the same physical key to both semantic actions.
 	if (kb.matches(data, KEYBIND_NEW_LINE)) return { kind: "ignore" };
 	if (isConfirm(kb, data)) {
+		const q = runtime.questions[state.currentTab];
+		if (q?.multiSelect) return buildMultiConfirmAction(state, runtime);
 		const answer = buildSingleSelectAnswer(state, runtime);
 		if (!answer) return { kind: "ignore" };
 		return { kind: "confirm", answer, autoAdvanceTab: computeAutoAdvanceTab(state, runtime) };
@@ -222,17 +266,35 @@ function routeSubmitTab(
 		// answers flow through `orderedAnswers()` in the host.
 		return state.submitChoiceIndex === 1 ? { kind: "cancel" } : { kind: "submit" };
 	}
-	// Global note (#182): `n` on the Submit tab opens the notes editor scoped to the whole
+	// Global note (#182): the notes key on the Submit tab opens the notes editor scoped to the whole
 	// questionnaire at the pseudo-index (`questions.length` in notesByTab). Reachable only
 	// with the editor closed — `routeKey` dispatches notesVisible traffic to
 	// `routeNotesMode` before the submit-tab block runs. The branch shadows nothing above
-	// it (cancel, tab switch, submit-nav, confirm): a literal `n` byte matches none of them
+	// it (cancel, tab switch, submit-nav, confirm): the default `n` matches none of them
 	// under default bindings, and a user who deliberately binds one of those actions to
 	// `n` keeps that mapping because the earlier branch still wins (Enter still submits).
-	if (data === NOTES_ACTIVATE_KEY) {
+	if (matchesNotesKey(data, runtime.notesKey)) {
 		return { kind: "notes_enter" };
 	}
 	return { kind: "ignore" };
+}
+
+const DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
+
+/**
+ * The row a digit hotkey names: `1`-`9` follow the list's numbering, so the
+ * unnumbered Next row has no digit. One key per keystroke — a pasted `"12"`
+ * matches none. Checked after every keybinding, so a digit bound to an action
+ * keeps that action.
+ */
+function digitRow(
+	data: string,
+	runtime: QuestionnaireRuntime,
+): { index: number; activatesInputMode: boolean } | undefined {
+	const index = DIGIT_KEYS.findIndex((digit) => matchesKey(data, digit));
+	const item = runtime.items[index];
+	if (!item || !ROW_INTENT_META[item.kind].numbered) return undefined;
+	return { index, activatesInputMode: ROW_INTENT_META[item.kind].activatesInputMode };
 }
 
 function routeMultiSelectTab(
@@ -246,33 +308,28 @@ function routeMultiSelectTab(
 	// Space toggles the focused row's checkbox. Suppressed on rows whose META declares
 	// `blocksMultiToggle` (the Next sentinel) or `activatesInputMode` (the "Type
 	// something." row — it is an inline input, not a checkable option).
-	if (data === SPACE_KEY) {
+	if (matchesKey(data, Key.space)) {
 		if (focusedMeta?.blocksMultiToggle) return { kind: "ignore" };
 		if (focusedMeta?.activatesInputMode) return { kind: "ignore" };
 		return { kind: "toggle", index: state.optionIndex };
 	}
 	if (isConfirm(kb, data)) {
-		// Enter on the "Type something." row is handled by the inputMode block above
-		// (→ confirm kind:"custom"). Defensive: never enter the toggle/multi_confirm
-		// path for an inputMode-activating row.
+		// Enter on the "Type something." row is handled by the inputMode block above.
+		// Defensive: never enter the toggle/multi_confirm path for an input-mode row.
 		if (focusedMeta?.activatesInputMode) return { kind: "ignore" };
 		// Enter on a regular row toggles (matching Space) — committing the question is now
 		// gated behind explicit focus on a row whose META declares `autoSubmitsInMulti`
 		// (the Next sentinel), so Enter on options is a no-cost way to flip checkboxes
 		// without leaving the keyboard home row.
 		if (!focusedMeta?.autoSubmitsInMulti) return { kind: "toggle", index: state.optionIndex };
-		// Enter on Next: carry autoAdvanceTab so the host can advance to the next tab in
-		// multi-question mode, OR submit the dialog in single-question mode
-		// (autoAdvanceTab === undefined when !isMulti). Without this, a single multi-select
-		// question would have no way to commit at all.
-		return {
-			kind: "multi_confirm",
-			selected: buildMultiSelected(state, runtime),
-			autoAdvanceTab: computeAutoAdvanceTab(state, runtime),
-		};
+		return buildMultiConfirmAction(state, runtime);
 	}
 	if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "cancel" };
-	return { kind: "ignore" };
+	// A digit toggles its row; the Type something. row's digit focuses it instead.
+	const row = digitRow(data, runtime);
+	if (!row) return { kind: "ignore" };
+	if (row.activatesInputMode) return { kind: "nav", nextIndex: row.index, inputValue: runtime.inputBuffer };
+	return { kind: "toggle", index: row.index };
 }
 
 function routeSingleSelectTab(
@@ -287,17 +344,30 @@ function routeSingleSelectTab(
 		return { kind: "confirm", answer, autoAdvanceTab: computeAutoAdvanceTab(state, runtime) };
 	}
 	if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "cancel" };
-	return { kind: "ignore" };
+	// A digit answers with its row, as Enter on it would; the Type something. row's digit focuses it instead.
+	const row = digitRow(data, runtime);
+	if (!row) return { kind: "ignore" };
+	if (row.activatesInputMode) return { kind: "nav", nextIndex: row.index, inputValue: runtime.inputBuffer };
+	const answer = buildSingleSelectAnswer(
+		{ ...state, optionIndex: row.index },
+		{ ...runtime, currentItem: runtime.items[row.index] },
+	);
+	if (!answer) return { kind: "ignore" };
+	return { kind: "confirm", answer, autoAdvanceTab: computeAutoAdvanceTab(state, runtime) };
 }
 
 export function routeKey(data: string, state: QuestionnaireState, runtime: QuestionnaireRuntime): QuestionnaireAction {
 	const kb = runtime.keybindings;
 
-	// Collapse/expand is a UI-level affordance — intercepted at the top so it works
-	// from every inner state (notes, inputMode, submit tab, multi-select) without
-	// reaching a branch that would otherwise consume the keystroke. The questionnaire
-	// stays mounted as Pi's focused bottom pane; collapsing only switches its render to
-	// one row, so the same component input path expands it again.
+	// Collapse/expand toggle is a UI-level affordance — intercepted at the top so it
+	// works from every inner state (notes, inputMode, submit tab, multi-select)
+	// without reaching any branch that would otherwise consume the keystroke. The
+	// questionnaire overlay is fully hidden via `OverlayHandle.setHidden(true)` while
+	// collapsed; pi-tui's overlay stack updates accordingly, so overlay-aware consumers
+	// (e.g. `pi-station`) see no visible modal and chat scroll resumes. The toggle key is
+	// also captured at the raw terminal level via `ctx.ui.onTerminalInput` so it still
+	// routes here when the overlay is hidden (pi-tui does not deliver input to a hidden
+	// overlay's `component.handleInput`).
 	//
 	// The default `ctrl+]` is free in every mainstream macOS terminal (Terminal.app,
 	// iTerm2, Warp), every multiplexer (tmux, zellij, screen — none use it as a prefix),
@@ -344,7 +414,7 @@ export function routeKey(data: string, state: QuestionnaireState, runtime: Quest
 	// "Type something.") is irrelevant: the gate sits ABOVE the multi-select
 	// toggle block and the Next sentinel never activates inputMode, so `n` is
 	// neither swallowed earlier nor blocked by `blocksMultiToggle`.
-	if (data === NOTES_ACTIVATE_KEY) {
+	if (matchesNotesKey(data, runtime.notesKey)) {
 		return { kind: "notes_enter" };
 	}
 
@@ -353,6 +423,36 @@ export function routeKey(data: string, state: QuestionnaireState, runtime: Quest
 	}
 	if (kb.matches(data, KEYBIND_DOWN)) {
 		return nextNavOnDown(state, runtime);
+	}
+
+	// PageUp/PageDown (or the keys configured via `previewScrollUpKey` / `previewScrollDownKey`)
+	// scroll the focused option's preview when it overflows its height
+	// budget. Preview content exists only on single-select questions (the schema rejects
+	// previews for multiSelect), and the submit tab / notes / inputMode paths already
+	// returned above, so reaching this point means a question tab with the option list
+	// focused. The action fires unconditionally — a focused option without a preview, or
+	// a preview that fits, simply leaves `previewScroll` clamped at 0 by the reducer.
+	if (!q.multiSelect) {
+		const upSpec = typeof runtime.previewScrollUpKey === "string" ? runtime.previewScrollUpKey : "pageup";
+		const downSpec = typeof runtime.previewScrollDownKey === "string" ? runtime.previewScrollDownKey : "pagedown";
+		if (upSpec !== "off" && matchesKey(data, upSpec as Parameters<typeof matchesKey>[1])) {
+			// State only ever decreases toward 0 (clamped by the reducer), so scroll-up can
+			// never overscroll — a plain step is enough.
+			return { kind: "preview_scroll", delta: -PREVIEW_SCROLL_STEP };
+		}
+		if (downSpec !== "off" && matchesKey(data, downSpec as Parameters<typeof matchesKey>[1])) {
+			// Snap to the rendered bottom: when the last frame reported the focused preview’s
+			// total overflow, step at most that far past the current offset. Reaching the end
+			// swallows further scroll-down presses (delta <= 0), so no phantom rows accumulate
+			// and the next scroll-up responds immediately.
+			const max = runtime.previewMaxScroll;
+			const delta =
+				max === undefined
+					? PREVIEW_SCROLL_STEP
+					: Math.min(PREVIEW_SCROLL_STEP, Math.max(0, max - state.previewScroll));
+			if (delta <= 0) return { kind: "ignore" };
+			return { kind: "preview_scroll", delta };
+		}
 	}
 
 	if (q.multiSelect) return routeMultiSelectTab(kb, data, state, runtime);

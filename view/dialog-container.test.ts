@@ -6,13 +6,13 @@ import { describe, expect, it } from "vitest";
 import {
 	makeMultiSelectPropsFromState as msoPropsFromState,
 	makeSubmitPickerPropsFromState as submitPickerPropsFromState,
-} from "../test-fixtures.js";
-import type { QuestionAnswer, QuestionData } from "../tool/types.js";
-import { MultiSelectView } from "./components/multi-select-view.js";
-import type { OptionListView } from "./components/option-list-view.js";
-import type { PreviewPane } from "./components/preview/preview-pane.js";
-import { CANCEL_LABEL, SUBMIT_LABEL, SubmitPicker } from "./components/submit-picker.js";
-import type { TabBar } from "./components/tab-bar.js";
+} from "../test-fixtures.ts";
+import type { QuestionAnswer, QuestionData } from "../tool/types.ts";
+import { MultiSelectView } from "./components/multi-select-view.ts";
+import type { OptionListView } from "./components/option-list-view.ts";
+import type { PreviewPane } from "./components/preview/preview-pane.ts";
+import { CANCEL_LABEL, SUBMIT_LABEL, SubmitPicker } from "./components/submit-picker.ts";
+import type { TabBar } from "./components/tab-bar.ts";
 import {
 	type DialogConfig,
 	type DialogProps,
@@ -29,8 +29,8 @@ import {
 	INCOMPLETE_WARNING_PREFIX,
 	READY_PROMPT,
 	REVIEW_HEADING,
-} from "./dialog-builder.js";
-import type { TabComponents } from "./tab-components.js";
+} from "./dialog-builder.ts";
+import type { TabComponents } from "./tab-components.ts";
 
 const theme = makeTheme() as unknown as Theme;
 
@@ -99,6 +99,7 @@ function makeConfig(over: MakeConfigOverrides = {}): DialogParts {
 		submitChoiceIndex: 0,
 		notesDraft: "",
 		collapsed: false,
+		previewScroll: 0,
 	};
 	const previewPane = over.previewPane ?? stubPreviewPane(["<PREVIEW>"]);
 	const tabsByIndex: ReadonlyArray<TabComponents> =
@@ -129,6 +130,7 @@ function makeConfig(over: MakeConfigOverrides = {}): DialogParts {
 			}),
 		getTerminalRows: over.getTerminalRows ?? (() => 24),
 		collapseKey: over.collapseKey ?? "ctrl+]",
+		notesKey: over.notesKey ?? "n",
 	};
 	const initialProps: DialogProps = over.initialProps ?? { state, activePreviewPane: previewPane };
 	return { config, initialProps };
@@ -222,6 +224,7 @@ describe("makeDialog — multi-question (question tab)", () => {
 			submitChoiceIndex: 0,
 			notesDraft: "",
 			collapsed: false,
+			previewScroll: 0,
 		};
 		const mso = new MultiSelectView(theme, multiQ);
 		mso.setProps(msoPropsFromState(multiQ, initialState));
@@ -263,6 +266,7 @@ describe("makeDialog — multi-question (question tab)", () => {
 					submitChoiceIndex: 0,
 					notesDraft: "",
 					collapsed: false,
+					previewScroll: 0,
 				},
 			}),
 		);
@@ -276,6 +280,14 @@ describe("makeDialog — multi-question (question tab)", () => {
 			.join("\n");
 		expect(joined).toContain("Alt+O to collapse");
 		expect(joined).not.toContain("Ctrl+]");
+	});
+
+	it("footer hint names the configured notesKey", () => {
+		const joined = makeDialog(makeConfig({ notesKey: "т" }))
+			.render(160)
+			.join("\n");
+		expect(joined).toContain("т to add notes");
+		expect(joined).not.toContain(HINT_PART_NOTES);
 	});
 
 	it("footer hint drops the collapse part when collapseKey is 'off' (#176)", () => {
@@ -302,6 +314,7 @@ describe("makeDialog — multi-question (question tab)", () => {
 					submitChoiceIndex: 0,
 					notesDraft: "",
 					collapsed: false,
+					previewScroll: 0,
 				},
 			}),
 		);
@@ -330,6 +343,7 @@ describe("makeDialog — multi-question (question tab)", () => {
 				submitChoiceIndex: 0,
 				notesDraft: "",
 				collapsed: false,
+				previewScroll: 0,
 			},
 		});
 		const visible = makeDialog(visibleCfg).render(160);
@@ -361,6 +375,7 @@ describe("makeDialog — multi-question (question tab)", () => {
 			submitChoiceIndex: 0,
 			notesDraft: "",
 			collapsed: false,
+			previewScroll: 0,
 		};
 		const mso = new MultiSelectView(theme, multiQ);
 		mso.setProps(msoPropsFromState(multiQ, state));
@@ -414,6 +429,7 @@ describe("makeDialog — Submit tab", () => {
 			submitChoiceIndex: 0,
 			notesDraft: "",
 			collapsed: false,
+			previewScroll: 0,
 			...over,
 		};
 	}
@@ -464,6 +480,14 @@ describe("makeDialog — Submit tab", () => {
 		expect(joined).toContain(INCOMPLETE_WARNING_PREFIX);
 		expect(joined).toContain("H2");
 		expect(joined).not.toContain(READY_PROMPT);
+	});
+
+	it("global-note hint names the configured notesKey", () => {
+		const state = submitState();
+		const dlg = makeDialog(
+			makeConfig({ state, submitPicker: makePicker(state), getBodyHeight: () => 6, notesKey: "т" }),
+		);
+		expect(dlg.render(160).join("\n")).toContain("т to add a note");
 	});
 
 	it("renders SubmitPicker rows (1. Submit answers / 2. Cancel)", () => {
@@ -624,6 +648,7 @@ describe("makeDialog — width safety", () => {
 							submitChoiceIndex: 0,
 							notesDraft: "",
 							collapsed: false,
+							previewScroll: 0,
 						},
 					}),
 				);
@@ -688,6 +713,7 @@ describe("makeDialog — body residual padding", () => {
 			submitChoiceIndex: 0,
 			notesDraft: "",
 			collapsed: false,
+			previewScroll: 0,
 		};
 		const stateTab1: DialogState = { ...stateTab0, currentTab: 1 };
 		const mso = new MultiSelectView(theme, multiQ);

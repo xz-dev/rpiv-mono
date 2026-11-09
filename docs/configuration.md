@@ -58,7 +58,8 @@ type are likewise dropped back to their default without a warning.
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| `collapseKey` | Key that folds and expands the dialog pane. | `"ctrl+]"` |
+| `collapseKey` | Key that collapses and expands the dialog. | `"ctrl+]"` |
+| `notesKey` | Key that opens the notes editor. | `"n"` |
 | `guidance.description` | Full text of the tool description the model sees. Replaces the built-in default entirely — no merging. | built-in description |
 | `guidance.promptSnippet` | One-line snippet describing the tool in the system prompt. | built-in snippet |
 | `guidance.promptGuidelines` | List of usage guidelines given to the model. | 4 built-in guidelines |
@@ -77,7 +78,8 @@ named keys `escape`, `esc`, `enter`, `return`, `tab`, `space`, `backspace`, `del
 
 Examples that work: `"ctrl+]"`, `"alt+o"`, `"ctrl+shift+h"`, `"f9"`, `"ctrl+}"`.
 
-Set `"off"` (any casing) to disable the collapse shortcut entirely.
+Set `"off"` (any casing) to disable the collapse shortcut entirely — no raw terminal
+listener is registered in that case.
 
 A spec that does not match the grammar is rejected and the default is used. This is
 strict on purpose: Pi's parser takes the last `+`-separated part as the key and ignores
@@ -85,8 +87,23 @@ unknown parts, so a typo like `"ctr+]"` would otherwise silently capture every b
 keypress at the terminal level.
 
 The footer hint inside the dialog names whatever key you configure (`Alt+O to collapse`
-for `"alt+o"`), as does the collapsed one-line footer. With `"off"` the collapse hint is
-dropped from the footer entirely, since no shortcut can fire.
+for `"alt+o"`), as do the collapsed one-line footer and the one-shot notification shown
+when the dialog is first hidden. With `"off"` the collapse hint is dropped from the
+footer entirely, since no shortcut can fire.
+
+### `notesKey`
+
+A single character matches exactly as your keyboard types it, in any script. On a
+Cyrillic layout, for example, the key that types `n` on a Latin layout types `т`, so set
+`"т"`. Values are trimmed; a single character keeps its case.
+
+Anything longer is a key spec in the `collapseKey` format, such as `"ctrl+n"` or `"alt+o"`.
+In terminals that use the Kitty keyboard protocol, a modified spec like `"ctrl+n"` also
+works on non-Latin layouts, because the terminal reports the key's Latin equivalent.
+
+A spec that does not match the grammar, or that names a key the dialog already uses
+(`space`, `enter`, `return`, `tab`, `escape`, `esc`, and the arrow keys), is rejected and
+`"n"` is used. The notes hints in the dialog name whatever key you configure.
 
 ### `guidance.description`, `guidance.promptSnippet` and `guidance.promptGuidelines`
 

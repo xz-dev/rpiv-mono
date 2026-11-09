@@ -1,12 +1,12 @@
 import type { Editor } from "@earendil-works/pi-tui";
-import type { BindingContext, PerTabBindingContext } from "../state/selectors/contract.js";
-import { selectActivePreviewPaneIndex } from "../state/selectors/derivations.js";
-import { selectActiveView } from "../state/selectors/focus.js";
-import type { QuestionnaireState } from "../state/state.js";
-import type { QuestionData } from "../tool/types.js";
-import type { BoundGlobalBinding, BoundPerTabBinding } from "./component-binding.js";
-import type { WrappingSelectItem } from "./components/wrapping-select.js";
-import type { TabComponents } from "./tab-components.js";
+import type { BindingContext, PerTabBindingContext } from "../state/selectors/contract.ts";
+import { selectActivePreviewPaneIndex } from "../state/selectors/derivations.ts";
+import { selectActiveView } from "../state/selectors/focus.ts";
+import type { QuestionnaireState } from "../state/state.ts";
+import type { QuestionData } from "../tool/types.ts";
+import type { BoundGlobalBinding, BoundPerTabBinding } from "./component-binding.ts";
+import type { WrappingSelectItem } from "./components/wrapping-select.ts";
+import type { TabComponents } from "./tab-components.ts";
 
 /** Cache-invalidation contract used by the adapter. `pi-tui` `Component` already satisfies it. */
 interface Invalidatable {
@@ -96,6 +96,36 @@ export class QuestionnairePropsAdapter {
 		}
 
 		this.tui.requestRender();
+	}
+
+	/**
+	 * Render-report channel for the session's preview-scroll de-accumulation. Returns the
+	 * preview offset the ACTIVE pane actually rendered last frame (clamped to the real
+	 * overflow), or `undefined` when no tab exists. The session calls this before each key
+	 * dispatch and re-syncs its canonical `previewScroll` when the rendered offset belongs
+	 * to the currently focused option (see `previewScrollRenderedFor`).
+	 */
+	lastRenderedPreviewScroll(currentTab: number): number | undefined {
+		const pane =
+			this.tabsByIndex[selectActivePreviewPaneIndex(currentTab, this.questions.length)]?.preview ??
+			this.tabsByIndex[0]?.preview;
+		return pane?.lastRenderedScroll;
+	}
+
+	/** Total overflow rows of the active pane’s last rendered preview (clamped-to-real helper for PageDown). */
+	lastRenderedPreviewTotalHidden(currentTab: number): number | undefined {
+		const pane =
+			this.tabsByIndex[selectActivePreviewPaneIndex(currentTab, this.questions.length)]?.preview ??
+			this.tabsByIndex[0]?.preview;
+		return pane?.lastTotalHidden;
+	}
+
+	/** Whether the active pane's last render was for the given option row (see PreviewPane docs). */
+	previewScrollRenderedFor(optionIndex: number, currentTab: number): boolean {
+		const pane =
+			this.tabsByIndex[selectActivePreviewPaneIndex(currentTab, this.questions.length)]?.preview ??
+			this.tabsByIndex[0]?.preview;
+		return pane?.renderedScrollForIndex === optionIndex;
 	}
 
 	/**

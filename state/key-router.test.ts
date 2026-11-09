@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { QuestionAnswer, QuestionData } from "../tool/types.js";
-import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
-import { allAnswered, routeKey, wrapTab } from "./key-router.js";
-import type { QuestionnaireRuntime, QuestionnaireState } from "./state.js";
+import type { QuestionAnswer, QuestionData } from "../tool/types.ts";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.ts";
+import { allAnswered, routeKey, wrapTab } from "./key-router.ts";
+import type { QuestionnaireRuntime, QuestionnaireState } from "./state.ts";
 
 const KEY = {
 	UP: "tui.select.up",
@@ -61,6 +61,7 @@ function makeState(over: Partial<QuestionnaireState> = {}): QuestionnaireState {
 		submitChoiceIndex: 0,
 		notesDraft: "",
 		collapsed: false,
+		previewScroll: 0,
 		...over,
 	};
 }
@@ -80,6 +81,10 @@ function makeRuntime(over: Partial<QuestionnaireRuntime> = {}): QuestionnaireRun
 		currentItem: items[0],
 		items,
 		collapseKey: "ctrl+]",
+		notesKey: "n",
+		previewMaxScroll: undefined,
+		previewScrollUpKey: "pageup",
+		previewScrollDownKey: "pagedown",
 		...over,
 	};
 }
@@ -109,6 +114,154 @@ describe("wrapTab + allAnswered", () => {
 				makeRuntime(),
 			),
 		).toBe(true);
+	});
+});
+
+describe.each([
+	["legacy", " ", "n"],
+	["CSI-u", "\x1b[32u", "\x1b[110u"],
+	["CSI-u explicit unmodified", "\x1b[32;1u", "\x1b[110;1u"],
+])("routeKey — %s Space and notes keys", (_encoding, space, notes) => {
+	const multiRuntime = (currentItem: WrappingSelectItem) =>
+		makeRuntime({ questions: [makeQuestion({ multiSelect: true })], isMulti: false, currentItem });
+
+	it("Space toggles the focused multi-select option", () => {
+		expect(routeKey(space, makeState({ optionIndex: 1 }), multiRuntime({ kind: "option", label: "B" }))).toEqual({
+			kind: "toggle",
+			index: 1,
+		});
+	});
+
+	it.each([
+		{ kind: "next", label: "Next" },
+		{ kind: "other", label: "Type something." },
+	] as const)("Space does not toggle the $kind row", (item) => {
+		expect(routeKey(space, makeState(), multiRuntime(item))).toEqual({ kind: "ignore" });
+	});
+
+	it("Space does not select a single-select option", () => {
+		expect(routeKey(space, makeState(), makeRuntime())).toEqual({ kind: "ignore" });
+	});
+
+	it("n opens notes on a question tab", () => {
+		expect(routeKey(notes, makeState(), makeRuntime())).toEqual({ kind: "notes_enter" });
+	});
+
+	it("n opens notes on the multi-select Next row", () => {
+		expect(routeKey(notes, makeState(), multiRuntime({ kind: "next", label: "Next" }))).toEqual({
+			kind: "notes_enter",
+		});
+	});
+
+	it("n opens the global note on the Submit tab", () => {
+		expect(routeKey(notes, makeState({ currentTab: 2 }), makeRuntime())).toEqual({ kind: "notes_enter" });
+	});
+
+	it("a remapped Submit action takes precedence over the notes shortcut", () => {
+		const runtime = makeRuntime({ keybindings: { matches: (data, name) => data === notes && name === KEY.SUBMIT } });
+		expect(routeKey(notes, makeState({ currentTab: 2 }), runtime)).toEqual({ kind: "submit" });
+	});
+
+	it.each([space, notes])("leaves inline input and collapsed mode untouched (%j)", (data) => {
+		expect(routeKey(data, makeState({ inputMode: true }), makeRuntime())).toEqual({ kind: "ignore" });
+		expect(routeKey(data, makeState({ collapsed: true }), makeRuntime())).toEqual({ kind: "ignore" });
+	});
+
+	it.each([space, notes])("forwards typing to an already open notes editor (%j)", (data) => {
+		expect(routeKey(data, makeState({ notesVisible: true }), makeRuntime())).toEqual({ kind: "notes_forward", data });
+	});
+});
+
+describe("routeKey — modified CSI-u shortcuts", () => {
+	it.each(["\x1b[32;3u", "\x1b[32;5u", "\x1b[110;3u", "\x1b[110;5u"])(
+		"does not treat Alt/Ctrl-modified keys as bare Space or n (%j)",
+		(data) => {
+			const runtime = makeRuntime({ questions: [makeQuestion({ multiSelect: true })], isMulti: false });
+			expect(routeKey(data, makeState(), runtime)).toEqual({ kind: "ignore" });
+			expect(routeKey(data, makeState({ currentTab: 2 }), makeRuntime())).toEqual({ kind: "ignore" });
+		},
+	);
+});
+
+describe("routeKey — configured notes key", () => {
+	it("a non-Latin key opens notes on a question tab and on the Submit tab", () => {
+		const runtime = makeRuntime({ notesKey: "т" });
+		expect(routeKey("т", makeState(), runtime)).toEqual({ kind: "notes_enter" });
+		expect(routeKey("т", makeState({ currentTab: 2 }), runtime)).toEqual({ kind: "notes_enter" });
+	});
+
+	it("n no longer opens notes once another key is configured", () => {
+		expect(routeKey("n", makeState(), makeRuntime({ notesKey: "т" }))).toEqual({ kind: "ignore" });
+	});
+
+	it("a modifier spec matches through pi-tui", () => {
+		expect(routeKey("\x0e", makeState(), makeRuntime({ notesKey: "ctrl+n" }))).toEqual({ kind: "notes_enter" });
+	});
+
+	it("a missing key falls back to n", () => {
+		expect(routeKey("n", makeState(), makeRuntime({ notesKey: undefined as never }))).toEqual({
+			kind: "notes_enter",
+		});
+	});
+});
+
+describe("routeKey — digit hotkeys", () => {
+	const options = ["A", "B", "C"].map((label) => ({ kind: "option" as const, label }));
+	const other = { kind: "other" as const, label: "Type something." };
+	const next = { kind: "next" as const, label: "Next" };
+	const single = (over: Partial<QuestionnaireRuntime> = {}) => makeRuntime({ items: [...options, other], ...over });
+	const multi = () =>
+		makeRuntime({
+			questions: [makeQuestion({ multiSelect: true })],
+			isMulti: false,
+			items: [...options, other, next],
+		});
+
+	it("single-select: a digit answers with that row, like Enter on it", () => {
+		expect(routeKey("2", makeState(), single())).toEqual({
+			kind: "confirm",
+			answer: { questionIndex: 0, question: "Pick one", kind: "option", answer: "B" },
+			autoAdvanceTab: 1,
+		});
+		expect(routeKey("1", makeState(), single({ questions: [makeQuestion()], isMulti: false }))).toEqual({
+			kind: "confirm",
+			answer: { questionIndex: 0, question: "Pick one", kind: "option", answer: "A" },
+			autoAdvanceTab: undefined,
+		});
+	});
+
+	it("multi-select: a digit toggles that row", () => {
+		expect(routeKey("2", makeState(), multi())).toEqual({ kind: "toggle", index: 1 });
+	});
+
+	it("the Type something. row's digit only focuses it", () => {
+		expect(routeKey("4", makeState(), single())).toEqual({ kind: "nav", nextIndex: 3, inputValue: "" });
+		expect(routeKey("4", makeState(), multi())).toEqual({ kind: "nav", nextIndex: 3, inputValue: "" });
+	});
+
+	it("ignores the unnumbered Next row, digits past the rows, 0 and pasted digits", () => {
+		expect(routeKey("5", makeState(), multi())).toEqual({ kind: "ignore" });
+		for (const data of ["9", "0", "12"])
+			expect(routeKey(data, makeState(), single()), data).toEqual({ kind: "ignore" });
+	});
+
+	it("matches a CSI-u digit", () => {
+		expect(routeKey("\x1b[50u", makeState(), multi())).toEqual({ kind: "toggle", index: 1 });
+	});
+
+	it("leaves digits as text while typing a custom answer or a note", () => {
+		expect(routeKey("2", makeState({ inputMode: true, optionIndex: 3 }), single())).toEqual({ kind: "ignore" });
+		expect(routeKey("2", makeState({ notesVisible: true }), single())).toEqual({ kind: "notes_forward", data: "2" });
+	});
+
+	it("a keybinding or notes key on a digit wins over the row hotkey", () => {
+		const boundUp = { matches: (data: string, name: string) => data === "2" && name === KEY.UP };
+		expect(routeKey("2", makeState({ optionIndex: 1 }), single({ keybindings: boundUp }))).toEqual({
+			kind: "nav",
+			nextIndex: 0,
+			inputValue: "",
+		});
+		expect(routeKey("2", makeState(), single({ notesKey: "2" }))).toEqual({ kind: "notes_enter" });
 	});
 });
 
@@ -316,7 +469,7 @@ describe("routeKey — multiSelect", () => {
 		).toEqual({ kind: "ignore" });
 	});
 
-	it("Enter on Next emits multi_confirm with selected labels in option order", () => {
+	it("Enter on Next emits selected labels and custom text together", () => {
 		expect(
 			routeKey(
 				sentinel(KEY.CONFIRM),
@@ -324,6 +477,7 @@ describe("routeKey — multiSelect", () => {
 				makeRuntime({
 					questions: [multiQ],
 					isMulti: false,
+					inputBuffer: "custom detail",
 					items: [
 						{ kind: "option", label: "FE" },
 						{ kind: "option", label: "BE" },
@@ -336,6 +490,7 @@ describe("routeKey — multiSelect", () => {
 		).toEqual({
 			kind: "multi_confirm",
 			selected: ["FE", "Tests"],
+			answer: "custom detail",
 			autoAdvanceTab: undefined,
 		});
 	});
@@ -426,10 +581,10 @@ describe("routeKey — multiSelect free-text ('Type something.')", () => {
 		{ kind: "next", label: "Next" },
 	];
 
-	it("Enter on the 'Type something.' row (inputMode) → confirm kind:'custom' with the buffer", () => {
+	it("Enter on the 'Type something.' row commits checked options with the custom text", () => {
 		const action = routeKey(
 			sentinel(KEY.CONFIRM),
-			makeState({ optionIndex: 3, inputMode: true }),
+			makeState({ optionIndex: 3, inputMode: true, multiSelectChecked: new Set([0, 2]) }),
 			makeRuntime({
 				questions: [multiQ],
 				isMulti: false,
@@ -438,11 +593,11 @@ describe("routeKey — multiSelect free-text ('Type something.')", () => {
 				inputBuffer: "typed answer",
 			}),
 		);
-		expect(action.kind).toBe("confirm");
-		if (action.kind === "confirm") {
-			expect(action.answer.kind).toBe("custom");
-			expect(action.answer.answer).toBe("typed answer");
-		}
+		expect(action).toMatchObject({
+			kind: "multi_confirm",
+			selected: ["FE", "Tests"],
+			answer: "typed answer",
+		});
 	});
 
 	it("Space on the 'Type something.' row (defensive, !inputMode) → ignore (no phantom toggle)", () => {
@@ -895,7 +1050,7 @@ describe("routeKey — remapped submit key as the confirm source (#156)", () => 
 				makeState({ optionIndex: 2, multiSelectChecked: new Set([0]) }),
 				makeRuntime({ keybindings: remapped, questions: [multiQ], isMulti: false, items, currentItem: items[2] }),
 			),
-		).toEqual({ kind: "multi_confirm", selected: ["FE"], autoAdvanceTab: undefined });
+		).toEqual({ kind: "multi_confirm", selected: ["FE"], answer: null, autoAdvanceTab: undefined });
 	});
 });
 
@@ -995,5 +1150,74 @@ describe("routeKey — collapse/expand (Ctrl+] toggle + collapsed-mode lockout)"
 
 		expect(() => routeKey(BYTE_CTRL_RBRACKET, makeState(), runtime as QuestionnaireRuntime)).not.toThrow();
 		expect(routeKey(BYTE_CTRL_RBRACKET, makeState(), runtime as QuestionnaireRuntime)).toEqual({ kind: "ignore" });
+	});
+});
+
+describe("routeKey — preview scroll keys", () => {
+	const BYTE_PAGEUP = "\x1b[5~";
+	const BYTE_PAGEDOWN = "\x1b[6~";
+
+	it("PageDown emits preview_scroll with a positive delta on a single-select tab", () => {
+		expect(routeKey(BYTE_PAGEDOWN, makeState(), makeRuntime())).toEqual({
+			kind: "preview_scroll",
+			delta: 10,
+		});
+	});
+
+	it("PageUp emits preview_scroll with a negative delta", () => {
+		expect(routeKey(BYTE_PAGEUP, makeState({ previewScroll: 15 }), makeRuntime())).toEqual({
+			kind: "preview_scroll",
+			delta: -10,
+		});
+	});
+
+	it("PageDown clamps to the last frame's previewMaxScroll instead of overshooting", () => {
+		// previewScroll=8, reported max=12 → only 4 rows actually remain; PageDown
+		// moves those 4 instead of stepping 10 into phantom rows (#210).
+		expect(routeKey(BYTE_PAGEDOWN, makeState({ previewScroll: 8 }), makeRuntime({ previewMaxScroll: 12 }))).toEqual({
+			kind: "preview_scroll",
+			delta: 4,
+		});
+	});
+
+	it("further PageDown presses at the bottom are swallowed so the next PageUp responds at once", () => {
+		expect(routeKey(BYTE_PAGEDOWN, makeState({ previewScroll: 12 }), makeRuntime({ previewMaxScroll: 12 }))).toEqual({
+			kind: "ignore",
+		});
+	});
+
+	it("multi-select questions ignore the scroll keys (previews are single-select only)", () => {
+		const multi = makeRuntime({ questions: [makeQuestion({ multiSelect: true })], isMulti: false });
+		expect(routeKey(BYTE_PAGEDOWN, makeState(), multi)).toEqual({ kind: "ignore" });
+		expect(routeKey(BYTE_PAGEUP, makeState(), multi)).toEqual({ kind: "ignore" });
+	});
+
+	it("a configured spec replaces the PageUp/PageDown default", () => {
+		const runtime = makeRuntime({ previewScrollDownKey: "ctrl+d" });
+		// Ctrl+D (ETX, byte 0x04) triggers the scroll; PgDn falls through to ignore.
+		expect(routeKey("\x04", makeState(), runtime)).toEqual({ kind: "preview_scroll", delta: 10 });
+		expect(routeKey(BYTE_PAGEDOWN, makeState(), runtime)).toEqual({ kind: "ignore" });
+	});
+
+	it("'off' disables the direction entirely", () => {
+		const runtime = makeRuntime({ previewScrollDownKey: "off" });
+		expect(routeKey(BYTE_PAGEDOWN, makeState(), runtime)).toEqual({ kind: "ignore" });
+		// The other direction still works.
+		expect(routeKey(BYTE_PAGEUP, makeState({ previewScroll: 5 }), runtime)).toEqual({
+			kind: "preview_scroll",
+			delta: -10,
+		});
+	});
+
+	it("a missing key spec falls back to the PageUp/PageDown defaults", () => {
+		// A Pi process can retain the older outer module while a package update
+		// replaced the lazily imported QuestionnaireSession graph — the new fields
+		// arrive undefined at runtime. Same defensive pattern as `collapseKey`.
+		const runtime = makeRuntime() as unknown as { previewScrollDownKey?: string };
+		delete runtime.previewScrollDownKey;
+		expect(routeKey(BYTE_PAGEDOWN, makeState(), runtime as QuestionnaireRuntime)).toEqual({
+			kind: "preview_scroll",
+			delta: 10,
+		});
 	});
 });

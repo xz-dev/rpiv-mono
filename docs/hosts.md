@@ -46,10 +46,12 @@ TUI produces. Trade-offs inherent to the native primitives:
 - No notes. Both note kinds — per-question `n` on a question tab and global `n` on the
   Submit tab — are terminal-only; the host's native `select` and `input` primitives carry
   no note field.
-- Multi-select is a free-text input: type the option numbers, comma-separated
-  (`1,3`). Any token that is not a valid option index is treated as a typed custom answer,
-  which is how the `Type something.` escape survives. An empty input commits an empty
-  selection, matching `Next` with nothing toggled.
+- Multi-select is a free-text input. Type option numbers separated by commas (`1,3`).
+  Add a semicolon and custom text to return both (`1,3; another color`). Plain text still
+  returns a custom-only multi-select answer. An empty input commits an empty selection,
+  matching `Next` with nothing selected.
+- In a single-select question, picking `Type something.` opens a text input. Cancelling it
+  or leaving it blank returns to the options; it never records an empty answer.
 - Dismissing any dialog cancels the whole questionnaire, mirroring `Esc` in the TUI.
 
 If the host can render neither custom UI nor dialogs, the call returns
@@ -68,7 +70,7 @@ Some parts of the dialog exist only under the right conditions:
 | Side-by-side preview | An option carries a `preview`, and terminal and pane are both ≥ 100 columns |
 | Preview pane at all | Single-select questions only |
 | Collapse shortcut | `collapseKey` is not `"off"` |
-| Collapsed pane | `collapseKey` is not `"off"`; the pane stays visible as one hint row and keeps focus for expansion |
+| Full overlay hide on collapse | The host also exposes raw terminal input (the only path that can reopen a hidden overlay); without it, collapsing shrinks the dialog to a visible one-line row instead |
 | Localized chrome | `@juicesharp/rpiv-i18n` is installed |
 
 ## Loading and startup cost

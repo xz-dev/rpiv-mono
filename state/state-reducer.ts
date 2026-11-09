@@ -1,8 +1,9 @@
-import type { QuestionAnswer, QuestionData, QuestionnaireResult } from "../tool/types.js";
-import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
-import type { QuestionnaireAction } from "./key-router.js";
-import { ROW_INTENT_META } from "./row-intent.js";
-import type { QuestionnaireState } from "./state.js";
+import type { QuestionAnswer, QuestionData, QuestionnaireResult } from "../tool/types.ts";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.ts";
+import type { QuestionnaireAction } from "./key-router.ts";
+import { PREVIEW_SCROLL_MAX } from "./key-router.ts";
+import { ROW_INTENT_META } from "./row-intent.ts";
+import type { QuestionnaireState } from "./state.ts";
 
 /** Session-lifetime constants. No live-component reads — peripheral values live on canonical state. */
 export interface ApplyContext {
@@ -23,6 +24,14 @@ export type Effect =
 	| { kind: "set_notes_value"; value: string }
 	| { kind: "set_notes_focused"; focused: boolean }
 	| { kind: "forward_notes_keystroke"; data: string }
+	/**
+	 * Tell the session to hide or show its underlying overlay. Emitted by the
+	 * `toggle_collapsed` action so the runtime can call `OverlayHandle.setHidden(...)`,
+	 * which lets other overlay-aware consumers (e.g. `pi-station`) see the questionnaire
+	 * as truly hidden and resume normal chat scroll while the user reads the transcript
+	 * behind the modal.
+	 */
+	| { kind: "set_overlay_hidden"; hidden: boolean }
 	| { kind: "done"; result: QuestionnaireResult };
 
 export interface ApplyResult {
@@ -55,15 +64,22 @@ function syncMultiSelectFromAnswers(
 	return indices;
 }
 
+function selectedLabels(state: QuestionnaireState, question: QuestionData): string[] {
+	const selected: string[] = [];
+	for (let i = 0; i < question.options.length; i++) {
+		if (state.multiSelectChecked.has(i)) selected.push(question.options[i]!.label);
+	}
+	return selected;
+}
+
 function persistMultiSelectAnswer(state: QuestionnaireState, ctx: ApplyContext): ReadonlyMap<number, QuestionAnswer> {
 	const q = ctx.questions[state.currentTab];
 	if (!q?.multiSelect) return state.answers;
-	const selected: string[] = [];
-	for (let i = 0; i < q.options.length; i++) {
-		if (state.multiSelectChecked.has(i)) selected.push(q.options[i]!.label);
-	}
+	const selected = selectedLabels(state, q);
+	const custom = customDraftValueFor(state, state.currentTab);
+	const hasCustom = custom.trim().length > 0;
 	const out = new Map(state.answers);
-	if (selected.length === 0) {
+	if (selected.length === 0 && !hasCustom) {
 		out.delete(state.currentTab);
 		return out;
 	}
@@ -72,7 +88,7 @@ function persistMultiSelectAnswer(state: QuestionnaireState, ctx: ApplyContext):
 		questionIndex: state.currentTab,
 		question: q.question,
 		kind: "multi",
-		answer: null,
+		answer: hasCustom ? custom : null,
 		selected,
 		...(pendingNotes && pendingNotes.length > 0 ? { notes: pendingNotes } : {}),
 	});
@@ -92,7 +108,8 @@ function customDraftValueFor(state: QuestionnaireState, tab: number): string {
 	const draft = state.customDraftsByTab.get(tab);
 	if (draft !== undefined) return draft;
 	const answer = state.answers.get(tab);
-	return answer?.kind === "custom" && typeof answer.answer === "string" ? answer.answer : "";
+	if (answer?.kind !== "custom" && answer?.kind !== "multi") return "";
+	return typeof answer.answer === "string" ? answer.answer : "";
 }
 
 function setCustomDraft(state: QuestionnaireState, tab: number, value: string): ReadonlyMap<number, string> {
@@ -109,33 +126,29 @@ function withoutCustomDraft(state: QuestionnaireState, tab: number): ReadonlyMap
 }
 
 /**
- * Row to focus when entering a tab: the row that produced its saved answer, so revisiting
- * an answered question never lands on row 0 where a stray Enter would overwrite the answer.
- * Unanswered tabs (and the Submit tab, which has no items) start at row 0.
+ * Row focused on entering a tab: the chosen option, or Next for a multi-select answer, so a
+ * stray Enter re-confirms the answer instead of replacing it with row 0. A custom answer
+ * starts at row 0, since focusing its row would enter input mode.
  */
 function answeredRowIndex(answer: QuestionAnswer | undefined, items: readonly WrappingSelectItem[]): number {
-	if (!answer) return 0;
-	const rowKind = ({ option: "option", custom: "other", multi: "next" } as const)[answer.kind];
-	const index = items.findIndex(
-		(item) => item.kind === rowKind && (rowKind !== "option" || item.label === answer.answer),
-	);
+	let index = -1;
+	if (answer?.kind === "option") index = items.findIndex((i) => i.kind === "option" && i.label === answer.answer);
+	if (answer?.kind === "multi") index = items.findIndex((i) => i.kind === "next");
 	return Math.max(0, index);
 }
 
 function switchTabResult(state: QuestionnaireState, nextTab: number, ctx: ApplyContext): ApplyResult {
 	const notesValue = notesValueFor(state, nextTab);
-	const items = ctx.itemsByTab[nextTab] ?? [];
-	const optionIndex = answeredRowIndex(state.answers.get(nextTab), items);
-	const focused = items[optionIndex];
 	const transitioned: QuestionnaireState = {
 		...state,
 		currentTab: nextTab,
-		optionIndex,
-		inputMode: focused ? ROW_INTENT_META[focused.kind].activatesInputMode : false,
+		optionIndex: answeredRowIndex(state.answers.get(nextTab), ctx.itemsByTab[nextTab] ?? []),
+		inputMode: false,
 		notesVisible: false,
 		submitChoiceIndex: 0,
 		multiSelectChecked: syncMultiSelectFromAnswers(state.answers, ctx.questions, nextTab),
 		notesDraft: notesValue,
+		previewScroll: 0,
 	};
 	return {
 		state: transitioned,
@@ -179,7 +192,18 @@ const navHandler: Handler<"nav"> = (state, action, ctx) => {
 	const customDraftsByTab = state.inputMode
 		? setCustomDraft(state, state.currentTab, action.inputValue)
 		: state.customDraftsByTab;
-	const next: QuestionnaireState = { ...state, optionIndex: action.nextIndex, inputMode, customDraftsByTab };
+	// Moving to another row shows that row's preview from the top (or hides the preview
+	// entirely on non-option rows) — the previous option's scroll position must not leak.
+	let next: QuestionnaireState = {
+		...state,
+		optionIndex: action.nextIndex,
+		inputMode,
+		customDraftsByTab,
+		previewScroll: 0,
+	};
+	if (state.inputMode && !inputMode && ctx.questions[state.currentTab]?.multiSelect) {
+		next = { ...next, answers: persistMultiSelectAnswer(next, ctx) };
+	}
 	if (!inputMode) return { state: next, effects: [] };
 	return {
 		state: next,
@@ -204,8 +228,10 @@ const tabSwitchHandler: Handler<"tab_switch"> = (state, action, ctx) => switchTa
 
 const confirmHandler: Handler<"confirm"> = (state, action, ctx) => {
 	let answer = action.answer;
-	if (answer.kind === "option" && answer.answer) {
-		const q = ctx.questions[answer.questionIndex];
+	const q = ctx.questions[answer.questionIndex];
+	if (answer.kind === "custom" && q?.multiSelect) {
+		answer = { ...answer, kind: "multi", selected: selectedLabels(state, q) };
+	} else if (answer.kind === "option" && answer.answer) {
 		const matched = q?.options.find((o) => o.label === answer.answer);
 		if (matched?.preview && matched.preview.length > 0) {
 			answer = { ...answer, preview: matched.preview };
@@ -217,17 +243,14 @@ const confirmHandler: Handler<"confirm"> = (state, action, ctx) => {
 	}
 	const answers = new Map(state.answers);
 	answers.set(answer.questionIndex, answer);
-	// Custom free-text on a multi-select tab is mutually exclusive with checkbox selections:
-	// clear the checked set immediately so [✔] glyphs vanish on Enter. (A custom answer
-	// carries no `selected` array, so syncMultiSelectFromAnswers keeps it empty on tab-back.)
-	const isCustomMulti = answer.kind === "custom" && ctx.questions[answer.questionIndex]?.multiSelect === true;
-	const customDraftsByTab =
-		answer.kind === "custom" ? withoutCustomDraft(state, answer.questionIndex) : state.customDraftsByTab;
+	const hasCustomAnswer = answer.kind === "custom" || (answer.kind === "multi" && answer.answer !== null);
+	const customDraftsByTab = hasCustomAnswer
+		? withoutCustomDraft(state, answer.questionIndex)
+		: state.customDraftsByTab;
 	const next: QuestionnaireState = {
 		...state,
 		answers,
 		customDraftsByTab,
-		...(isCustomMulti ? { multiSelectChecked: new Set<number>() } : {}),
 	};
 	if (action.autoAdvanceTab !== undefined) return switchTabResult(next, action.autoAdvanceTab, ctx);
 	return doneFor(next, ctx, false);
@@ -251,13 +274,14 @@ const multiConfirmHandler: Handler<"multi_confirm"> = (state, action, ctx) => {
 		questionIndex: state.currentTab,
 		question: q.question,
 		kind: "multi",
-		answer: null,
+		answer: action.answer,
 		selected: action.selected,
 		...(pendingNotes && pendingNotes.length > 0 ? { notes: pendingNotes } : {}),
 	});
 	const synced: QuestionnaireState = {
 		...state,
 		answers,
+		customDraftsByTab: withoutCustomDraft(state, state.currentTab),
 		multiSelectChecked: syncMultiSelectFromAnswers(answers, ctx.questions, state.currentTab),
 	};
 	if (action.autoAdvanceTab !== undefined) return switchTabResult(synced, action.autoAdvanceTab, ctx);
@@ -267,7 +291,9 @@ const multiConfirmHandler: Handler<"multi_confirm"> = (state, action, ctx) => {
 const notesEnterHandler: Handler<"notes_enter"> = (state, _action, _ctx) => {
 	const value = notesValueFor(state, state.currentTab);
 	return {
-		state: { ...state, notesVisible: true, notesDraft: value },
+		// Entering the notes editor hides the preview — reset the scroll so reopening the
+		// options later (same row) shows the preview from the top again.
+		state: { ...state, notesVisible: true, notesDraft: value, previewScroll: 0 },
 		effects: [
 			{ kind: "set_notes_value", value },
 			{ kind: "set_notes_focused", focused: true },
@@ -314,8 +340,14 @@ const notesClearHandler: Handler<"notes_clear"> = (s, _a, _c) => ({
 });
 const toggleCollapsedHandler: Handler<"toggle_collapsed"> = (s, _a, _c) => ({
 	state: { ...s, collapsed: !s.collapsed },
-	effects: [],
+	effects: [{ kind: "set_overlay_hidden", hidden: !s.collapsed }],
 });
+
+const previewScrollHandler: Handler<"preview_scroll"> = (state, action, _ctx) => {
+	const next = Math.max(0, Math.min(PREVIEW_SCROLL_MAX, state.previewScroll + action.delta));
+	if (next === state.previewScroll) return { state, effects: [] };
+	return { state: { ...state, previewScroll: next }, effects: [] };
+};
 const ignoreHandler: Handler<"ignore"> = (s, _a, _c) => ({ state: s, effects: [] });
 
 /**
@@ -341,6 +373,7 @@ const HANDLERS: { [K in QuestionnaireAction["kind"]]: Handler<K> } = {
 	submit: submitHandler,
 	submit_nav: submitNavHandler,
 	toggle_collapsed: toggleCollapsedHandler,
+	preview_scroll: previewScrollHandler,
 	ignore: ignoreHandler,
 };
 

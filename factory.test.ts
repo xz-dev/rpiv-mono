@@ -1,8 +1,8 @@
 import { CURSOR_MARKER, getKeybindings } from "@earendil-works/pi-tui";
 import { createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerAskUserQuestionTool } from "./ask-user-question.js";
-import type { QuestionAnswer, QuestionnaireResult } from "./tool/types.js";
+import { registerAskUserQuestionTool } from "./ask-user-question.ts";
+import type { QuestionAnswer, QuestionnaireResult } from "./tool/types.ts";
 
 /** Narrowed tool-result shape for test assertions. */
 interface ToolResult {
@@ -278,20 +278,22 @@ describe("ask_user_question — 'Type something.' free-text flow", () => {
 		expect(r?.details.answers[0].answer).toBe("hello");
 	});
 
-	it("Type something with no input → kind:'custom', answer=null", async () => {
+	it("Type something with no input or only spaces: Enter records nothing and stays on the row (#301)", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
 			c.handleInput(KEY.DOWN); // → Second
 			c.handleInput(KEY.DOWN); // → Type something
-			c.handleInput(KEY.ENTER); // confirm with empty buffer
+			c.handleInput(KEY.ENTER); // empty buffer: ignored
+			for (const ch of "  ") c.handleInput(ch);
+			c.handleInput(KEY.ENTER); // blank buffer: ignored
+			for (const ch of "x") c.handleInput(ch);
+			c.handleInput(KEY.ENTER);
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
 			| ToolResult
 			| undefined;
-		expect(r?.details.answers[0].kind).toBe("custom");
-		expect(r?.details.answers[0].answer).toBeNull();
-		expect(r?.content[0].text).toContain("(no input)");
+		expect(r?.details.answers).toEqual([{ questionIndex: 0, question: "Name?", kind: "custom", answer: "  x" }]);
 	});
 
 	it("Type text, backspace removes last char, then Enter", async () => {
@@ -342,7 +344,7 @@ describe("ask_user_question — multi-select flow (single question)", () => {
 		],
 	};
 
-	it("Space toggles items, then DOWN to Next + Enter confirms selected labels", async () => {
+	it("commits checked options and custom text together through Next", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
 			c.handleInput(KEY.SPACE); // toggle Frontend ON
@@ -350,6 +352,7 @@ describe("ask_user_question — multi-select flow (single question)", () => {
 			c.handleInput(KEY.SPACE); // toggle Backend ON
 			c.handleInput(KEY.DOWN); // → DevOps (not toggled)
 			c.handleInput(KEY.DOWN); // → "Type something." row
+			for (const char of "GraphQL") c.handleInput(char);
 			c.handleInput(KEY.DOWN); // → Next sentinel
 			c.handleInput(KEY.ENTER); // commit + advance (single question → submit)
 		});
@@ -358,7 +361,7 @@ describe("ask_user_question — multi-select flow (single question)", () => {
 			| ToolResult
 			| undefined;
 		expect(r?.details.cancelled).toBe(false);
-		expect(r?.details.answers[0].answer).toBeNull();
+		expect(r?.details.answers[0].answer).toBe("GraphQL");
 		expect(r?.details.answers[0].selected).toEqual(["Frontend", "Backend"]);
 	});
 
@@ -634,7 +637,7 @@ describe("ask_user_question — multi-question tab cycling flow", () => {
 	it("Tab back after `Type something.` → row reads `<text> ✔` and buffer is restored", async () => {
 		const tool = register();
 		const renderedAfterBack: string[][] = [];
-		const renderedAway: string[][] = [];
+		const renderedOnOtherRow: string[][] = [];
 		const { custom } = driveCustom((c, done) => {
 			c.handleInput(KEY.DOWN); // → B
 			c.handleInput(KEY.DOWN); // → Type something. (kind:'other', inputMode)
@@ -644,20 +647,21 @@ describe("ask_user_question — multi-question tab cycling flow", () => {
 			c.handleInput("l");
 			c.handleInput("o");
 			c.handleInput(KEY.ENTER); // confirm "Hello" (kind:'custom') → auto-advance to Q2
-			c.handleInput(KEY.SHIFT_TAB); // ← back to Q1; cursor returns to the custom row, buffer restored
+			c.handleInput(KEY.SHIFT_TAB); // ← back to Q1; cursor resets to row 0
 			renderedAfterBack.push(c.render(120));
-			c.handleInput(KEY.UP); // → B; the custom row renders as confirmed text
-			renderedAway.push(c.render(120));
+			c.handleInput(KEY.DOWN); // → B
+			c.handleInput(KEY.DOWN); // → Type something. (now active, input buffer restored)
+			renderedOnOtherRow.push(c.render(120));
 			done({ answers: [], cancelled: true });
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		await tool.execute?.("tc", twoParams as never, undefined as never, undefined as never, ctx);
 		const back = renderedAfterBack[0]!;
-		expect(back.some((l) => l.includes("❯ 3. Hello") && l.includes(CURSOR_MARKER))).toBe(true);
+		expect(back.some((l) => l.includes("Hello ✔"))).toBe(true);
 		expect(back.some((l) => l.includes("Type something."))).toBe(false);
-		const away = renderedAway[0]!;
-		expect(away.some((l) => l.includes("Hello ✔"))).toBe(true);
-		expect(away.some((l) => l.includes("❯ 2. B"))).toBe(true);
+		expect(back.some((l) => l.includes("❯ 1. A"))).toBe(true);
+		const onOther = renderedOnOtherRow[0]!;
+		expect(onOther.some((l) => l.includes("Hello") && l.includes(CURSOR_MARKER))).toBe(true);
 	});
 
 	// Multi-select keeps its existing `[✔]` rendering — the new single-select marker must

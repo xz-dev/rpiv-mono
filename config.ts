@@ -6,6 +6,10 @@ export type CollapseKeySpec = string;
 
 export const DEFAULT_COLLAPSE_KEY: CollapseKeySpec = "ctrl+]";
 export const COLLAPSE_KEY_OFF: CollapseKeySpec = "off";
+export const DEFAULT_NOTES_KEY = "n";
+/** Default preview-scroll bindings match PR #211: PageUp scrolls up, PageDown scrolls down. */
+export const DEFAULT_PREVIEW_SCROLL_UP_KEY = "pageup";
+export const DEFAULT_PREVIEW_SCROLL_DOWN_KEY = "pagedown";
 
 export interface AskUserQuestionConfig {
 	guidance?: GuidanceFields;
@@ -17,6 +21,24 @@ export interface AskUserQuestionConfig {
 	 * Pass `"off"` to disable the collapse shortcut entirely.
 	 */
 	collapseKey?: CollapseKeySpec;
+	/**
+	 * Key that opens the notes editor. Defaults to `"n"`. A single character of any
+	 * script (e.g. `"т"` on a Cyrillic layout) matches as typed; anything else is a
+	 * key spec in the `collapseKey` format, e.g. `"ctrl+n"`.
+	 */
+	notesKey?: string;
+	/**
+	 * Key that scrolls the focused option's preview up by ~one screenful. Defaults to
+	 * `"pageup"`. A `collapseKey`-format spec such as `"ctrl+u"` or `"alt+k"`; bare
+	 * printable characters are rejected (they would collide with option digits, the
+	 * notes key, and inline input). Pass `"off"` to disable this direction only.
+	 */
+	previewScrollUpKey?: string;
+	/**
+	 * Key that scrolls the focused option's preview down by ~one screenful. Defaults to
+	 * `"pagedown"`. Same spec rules as `previewScrollUpKey`.
+	 */
+	previewScrollDownKey?: string;
 }
 
 // Named keys accepted by pi-tui's `matchesKey` (keys.js switch on the parsed base key).
@@ -50,7 +72,7 @@ function isValidCollapseKeySpec(spec: string): boolean {
 	// base key that is a single printable character or a named special key. A loose
 	// check is not enough — pi-tui's `parseKeyId` takes the LAST `+`-part as the key
 	// and ignores unknown parts, so a typo like `ctr+]` would silently match every
-	// bare `]` keypress instead of the intended modified shortcut.
+	// bare `]` keypress (and the raw terminal listener would consume them globally).
 	if (!spec) return false;
 	if (spec.startsWith("+") || spec.endsWith("+") || spec.includes("++")) return false;
 	const parts = spec.split("+");
@@ -66,6 +88,58 @@ export function resolveCollapseKey(config: Pick<AskUserQuestionConfig, "collapse
 	if (raw === undefined || raw === "") return DEFAULT_COLLAPSE_KEY;
 	if (raw === COLLAPSE_KEY_OFF) return COLLAPSE_KEY_OFF;
 	return isValidCollapseKeySpec(raw) ? raw : DEFAULT_COLLAPSE_KEY;
+}
+
+// Keys the questionnaire already navigates with — a notes key on one of them would shadow it.
+const NOTES_KEY_RESERVED = new Set(["space", "enter", "return", "tab", "escape", "esc", "up", "down", "left", "right"]);
+
+export function resolveNotesKey(config: Pick<AskUserQuestionConfig, "notesKey">): string {
+	const raw = config.notesKey?.trim();
+	if (!raw) return DEFAULT_NOTES_KEY;
+	if ([...raw].length === 1) return raw;
+	const spec = raw.toLowerCase();
+	return isValidCollapseKeySpec(spec) && !NOTES_KEY_RESERVED.has(spec) ? spec : DEFAULT_NOTES_KEY;
+}
+
+/** A single-character notes key shows as configured (`n`, not `N`); a spec is display-cased. */
+export function formatNotesKeyForDisplay(notesKey: string): string {
+	return [...notesKey].length === 1 ? notesKey : formatKeySpecForDisplay(notesKey);
+}
+
+/**
+ * Preview-scroll keys must be a named special key (`pageup`, `f5`, `home`, …) or carry a
+ * modifier — a bare printable character would collide with option-digit hotkeys, the
+ * notes key, and inline-input typing. `NOTES_KEY_RESERVED` covers navigation keys; the
+ * printable check below covers everything else.
+ */
+const SCROLL_KEY_RESERVED = new Set([...NOTES_KEY_RESERVED, "space"]);
+
+function isValidPreviewScrollKeySpec(spec: string): boolean {
+	if (!isValidCollapseKeySpec(spec)) return false;
+	const base = spec.split("+").pop() ?? "";
+	// Bare single printable character — reject (see docstring above).
+	if (spec.length === 1) return false;
+	if (SCROLL_KEY_RESERVED.has(base)) return false;
+	return true;
+}
+
+export function resolvePreviewScrollUpKey(config: Pick<AskUserQuestionConfig, "previewScrollUpKey">): string {
+	const raw = config.previewScrollUpKey?.trim().toLowerCase();
+	if (raw === undefined || raw === "") return DEFAULT_PREVIEW_SCROLL_UP_KEY;
+	if (raw === COLLAPSE_KEY_OFF) return COLLAPSE_KEY_OFF;
+	return isValidPreviewScrollKeySpec(raw) ? raw : DEFAULT_PREVIEW_SCROLL_UP_KEY;
+}
+
+export function resolvePreviewScrollDownKey(config: Pick<AskUserQuestionConfig, "previewScrollDownKey">): string {
+	const raw = config.previewScrollDownKey?.trim().toLowerCase();
+	if (raw === undefined || raw === "") return DEFAULT_PREVIEW_SCROLL_DOWN_KEY;
+	if (raw === COLLAPSE_KEY_OFF) return COLLAPSE_KEY_OFF;
+	return isValidPreviewScrollKeySpec(raw) ? raw : DEFAULT_PREVIEW_SCROLL_DOWN_KEY;
+}
+
+/** Display form for the scroll keys — matches the box-border indicator copy (`PgUp`/`PgDn`). */
+export function formatPreviewScrollKeyForDisplay(spec: string): string {
+	return formatKeySpecForDisplay(spec);
 }
 
 // The only compound-word names in SPECIAL_KEYS — first-letter capitalization

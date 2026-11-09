@@ -1,5 +1,5 @@
-import type { QuestionAnswer, QuestionData } from "../tool/types.js";
-import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
+import type { QuestionAnswer, QuestionData } from "../tool/types.ts";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.ts";
 
 /**
  * Canonical state for the questionnaire dialog. Single source of truth — both the
@@ -25,11 +25,28 @@ export interface QuestionnaireState {
 	/** Canonical mirror of the in-flight notes editor; runtime mirrors after `forward_notes_keystroke`. */
 	notesDraft: string;
 	/**
-	 * Collapsed mode: the focused bottom pane shrinks to one hint row while preserving
-	 * every answer and draft. Because the pane stays mounted and focused, the configured
-	 * collapse key expands it through the normal component input path; no hidden-overlay
-	 * listener is involved. While collapsed, every other keystroke except cancel is
-	 * swallowed by `routeKey`.
+	 * Scroll offset (rows) inside the focused option's preview block when its content
+	 * overflows the preview height budget. Reset to 0 on option navigation, tab
+	 * switches, and mode transitions; the view layer clamps it to the actual overflow
+	 * (the reducer cannot know rendered heights). PageUp/PageDown adjust it — see
+	 * `key-router.ts` and `preview-block-renderer.ts`.
+	 */
+	previewScroll: number;
+	/**
+	 * Collapsed mode: the questionnaire gets out of the way so the agent transcript behind
+	 * the bottom-anchored overlay becomes readable. Toggled by the configured collapse key
+	 * from any state; while true, every keystroke except cancel is swallowed (see
+	 * `routeKey`). Two renderings, chosen by host capability:
+	 *
+	 * - Hosts with an `OverlayHandle` AND a raw `onTerminalInput` listener (real pi-tui):
+	 *   the `set_overlay_hidden` effect fully hides the overlay; the raw listener registered
+	 *   in `execute()` reopens it, because pi-tui routes no input to a hidden overlay.
+	 * - Inline presentation, or hosts without the raw listener/handle: the dialog stays visible and
+	 *   shrinks to a single hint row. The row keeps focus and input routing, so the same key
+	 *   expands it and Esc cancels, and the expand key never falls through to an underlying
+	 *   overlay (e.g. `/btw`). The session gates `set_overlay_hidden` on the listener's
+	 *   existence (`canReopenWhileHidden`) so a handle-bearing host without raw input can
+	 *   never hide the overlay into a state nothing can reopen.
 	 */
 	collapsed: boolean;
 }
@@ -52,5 +69,18 @@ export interface QuestionnaireRuntime {
 	 * from `AskUserQuestionConfig.collapseKey` (or the package default). When `"off"`,
 	 * the collapse shortcut is disabled.
 	 */
+	/**
+	 * Max scrollable rows of the focused option’s preview (last rendered frame’s total
+	 * overflow; undefined when no preview overflow was rendered for the focused row).
+	 * Lets PageDown snap to the real bottom instead of overscrolling into phantom rows.
+	 */
+	previewMaxScroll: number | undefined;
+
 	collapseKey: string;
+	/** Key that opens the notes editor (`resolveNotesKey` output: `"n"` by default). */
+	notesKey: string;
+	/** Preview-scroll-up key spec (`resolvePreviewScrollUpKey` output: `"pageup"` by default, `"off"` disables). */
+	previewScrollUpKey: string;
+	/** Preview-scroll-down key spec (`resolvePreviewScrollDownKey` output: `"pagedown"` by default, `"off"` disables). */
+	previewScrollDownKey: string;
 }
