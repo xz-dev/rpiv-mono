@@ -55,9 +55,17 @@ mv -- "$readme_tmp" "$output_root/README.md"
 
 source_commit=$(git -C "$source_root" rev-parse HEAD)
 upstream_commit=${UPSTREAM_COMMIT:-$(git -C "$source_root" rev-parse origin/main)}
-patch_ask_bottom_pane=${PATCH_ASK_BOTTOM_PANE:-$(git -C "$source_root" rev-parse patch/ask-bottom-pane)}
-patch_ask_ctrl_c_clear=${PATCH_ASK_CTRL_C_CLEAR:-$(git -C "$source_root" rev-parse patch/ask-ctrl-c-clear)}
-patch_ask_preserve_cursor=${PATCH_ASK_PRESERVE_CURSOR:-$(git -C "$source_root" rev-parse patch/ask-preserve-cursor)}
+
+# Optional patch-branch provenance — resolve each ref only if it exists so
+# retired patches (e.g. patch/ask-bottom-pane, patch/ask-preserve-cursor)
+# don't break the projection once they're dropped from the sync set.
+resolve_patch() { git -C "$source_root" rev-parse --verify --quiet "$1" || echo "retired"; }
+patch_ask_bottom_pane=$(resolve_patch patch/ask-bottom-pane)
+patch_ask_ctrl_c_clear=$(resolve_patch patch/ask-ctrl-c-clear)
+patch_ask_preserve_cursor=$(resolve_patch patch/ask-preserve-cursor)
+patch_ask_preview_scroll=$(resolve_patch patch/ask-preview-scroll)
+patch_ask_preview_scroll_keys=$(resolve_patch patch/ask-preview-scroll-keys)
+
 projection_commit=$(git -C "$ci_root" rev-parse HEAD)
 source_dirty=false
 [[ -n $(git -C "$source_root" status --porcelain) ]] && source_dirty=true
@@ -67,6 +75,8 @@ upstream_commit=$upstream_commit
 patch_ask_bottom_pane=$patch_ask_bottom_pane
 patch_ask_ctrl_c_clear=$patch_ask_ctrl_c_clear
 patch_ask_preserve_cursor=$patch_ask_preserve_cursor
+patch_ask_preview_scroll=$patch_ask_preview_scroll
+patch_ask_preview_scroll_keys=$patch_ask_preview_scroll_keys
 source_commit=$source_commit
 projection_commit=$projection_commit
 source_dirty=$source_dirty
