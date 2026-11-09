@@ -85,3 +85,66 @@ jobs:
           git add -A
           git commit -m "build: project ask-user-question release tree"
           git push --force-with-lease origin HEAD:release/ask-user-question
+
+  rebuild-rpiv-todo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ci branch
+        uses: actions/checkout@v7
+        with:
+          ref: ci
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Build integrated source candidate (upstream main + declared patches)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/juicesharp/rpiv-mono.git
+          git fetch upstream main
+          git fetch origin \
+            feat/rpiv-todo-focus-window:feat/rpiv-todo-focus-window \
+            feat/rpiv-todo-stale-completed-fade:feat/rpiv-todo-stale-completed-fade \
+            feat/rpiv-todo-active-strip:feat/rpiv-todo-active-strip \
+            release/rpiv-todo:release/rpiv-todo
+
+          git worktree add --detach /tmp/ci-tree origin/ci
+
+          git checkout -B candidate upstream/main
+          # feat/rpiv-todo-* are stacked — each carries the previous one in its
+          # history, so merging the tip brings in the whole stack.
+          git merge --no-edit feat/rpiv-todo-active-strip
+
+      - name: Install dependencies
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Validate source candidate
+        run: |
+          npx vitest run packages/rpiv-todo
+          npx tsc --noEmit -p tsconfig.base.json
+          npx biome check --error-on-warnings packages/rpiv-todo
+
+      - name: Project release tree
+        run: |
+          rm -rf /tmp/release-out
+          /tmp/ci-tree/scripts/project-rpiv-todo.sh "$GITHUB_WORKSPACE" /tmp/release-out
+
+      - name: Validate projected package
+        working-directory: /tmp/release-out
+        run: npm pack --dry-run --json > /dev/null
+
+      - name: Commit and push rebuilt release branch
+        run: |
+          git checkout -B release/rpiv-todo release/rpiv-todo
+          rsync -a --delete --exclude='.git' /tmp/release-out/ "$GITHUB_WORKSPACE/"
+          if git diff --quiet HEAD; then
+            echo "No projected changes; release branch already up to date."
+            exit 0
+          fi
+          git add -A
+          git commit -m "build: project rpiv-todo release tree"
+          git push --force-with-lease origin HEAD:release/rpiv-todo
