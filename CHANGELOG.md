@@ -29,6 +29,68 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   until newer completions displace it, and stale completions disappear
   mid-turn rather than in bulk at the next `agent_start`.
 
+<<<<<<< HEAD
+## [2.15.0] - 2026-10-24
+
+### Fixed
+
+- **Resuming a session no longer crashes on a corrupted todo snapshot.** Replay checked only that a saved snapshot had a `tasks` array, not what was in it. A session whose saved task list another extension had truncated with a marker string (`[output-policy: array truncated, …]`) restored that string as a task, and the overlay crashed while drawing it. Replay now checks every saved task and skips a snapshot with a malformed one, keeping the last valid list. Thanks @pstanton237 ([#230](https://github.com/juicesharp/rpiv-mono/pull/230)).
+
+## [2.14.2] - 2026-10-23
+
+### Fixed
+
+- **A failed `todo` call no longer shows as a success.** A call missing `action` rendered as `todo undefined ✓`, and a call the reducer rejected (an unknown id, an invalid transition) echoed the requested status, e.g. `● completed`. The call card now shows just `todo` when there is no action, and the result card shows `✗` with the first line of the error. Only the transcript display changes; what the model receives is unchanged. Thanks @catch6. ([#175](https://github.com/juicesharp/rpiv-mono/issues/175))
+
+## [2.14.1] - 2026-10-23
+
+## [2.14.0] - 2026-10-23
+
+### Added
+
+- **Batch create.** `create` accepts `tasks[]` instead of `subject`, so a whole plan lands in one call: `{"action":"create","tasks":[{"subject":"Inspect"},{"subject":"Test"}]}`. The batch is all-or-nothing: every item is validated first, and one bad item fails the call with the list unchanged. Each item carries its own `description`, `activeForm`, `blockedBy`, `owner` and `metadata`; the same fields at the top level of a batch, or a `subject` next to `tasks[]`, are rejected rather than dropped. Items cannot `blockedBy` each other, since their ids do not exist until the call commits; create the prerequisite first, then the dependent with `blockedBy`. A `tasks[]` sent as a JSON string, as some vLLM/LiteLLM-served models do, is decoded before validation. Single create is unchanged. Thanks @0xbentang. ([#44](https://github.com/juicesharp/rpiv-mono/issues/44), [#193](https://github.com/juicesharp/rpiv-mono/pull/193))
+
+### Changed
+
+- The reducer's `create` result reports `taskIds: number[]` instead of `taskId: number`, so code calling the re-exported `applyTaskMutation` directly must read the new field. The tool's output and saved snapshots are unaffected.
+- A new ninth built-in prompt guideline teaches batch create. A `guidance.promptGuidelines` override replaces the built-ins as before, so it does not include the new line; the `tasks` field description still documents batch create.
+
+## [2.13.10] - 2026-10-23
+
+## [2.13.9] - 2026-10-17
+
+### Changed
+
+- Faster extension startup: relative imports now name the published `.ts` files instead of nonexistent `.js` targets, so Pi's loader (jiti) no longer runs fallback resolution for each of them on every launch. Runtime behavior is unchanged. Thanks @ry4nyu for #306, and @szastupov for #304.
+
+## [2.13.8] - 2026-10-12
+
+## [2.13.7] - 2026-10-12
+
+## [2.13.6] - 2026-10-12
+
+## [2.13.5] - 2026-10-12
+
+### Fixed
+
+- **Tasks changed from codemode scripts survive resume, reload, tree navigation and compaction.** A `todo` call made through another tool (Pi's codemode, or any `ctx.executeTool` caller) never becomes a standalone tool result on the session branch, so replay could not see it. Tasks created only that way came back empty, and a task completed that way rolled back to its last directly recorded status. Every call that changes the list now also saves its snapshot as a `rpiv-todo-state` custom entry (never sent to the model), and replay restores from the latest one. Sessions saved before this change still replay from tool results. ([#290](https://github.com/juicesharp/rpiv-mono/issues/290))
+
+## [2.13.4] - 2026-10-11
+
+## [2.13.3] - 2026-10-11
+
+## [2.13.2] - 2026-10-11
+
+## [2.13.1] - 2026-10-11
+
+## [2.13.0] - 2026-10-11
+
+## [2.12.0] - 2026-09-30
+
+### Fixed
+
+- **`typebox` is declared as a `peerDependencies: "*"` entry, no longer a `dependencies` entry.** Pi provides `typebox` to extensions and aliases the bare specifier to its own bundled copy at load time, so the copy this manifest installed was dead weight at best and a second live instance at worst. Pi 0.99.1 warns at every startup about the old shape ("Host-provided extension packages must be declared in peerDependencies with a \"*\" range, not dependencies: typebox"); this clears it once the release is installed. Contributed in #282; reported in #266, #268, #272 and #277.
+
 ## [2.11.0] - 2026-09-21
 
 ## [2.10.1] - 2026-09-13

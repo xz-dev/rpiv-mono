@@ -14,8 +14,8 @@
 
 import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
 import { type TUI, truncateToWidth } from "@earendil-works/pi-tui";
-import { COLLAPSE_KEY_OFF, getMaxWidgetLines, resolveCollapseKey } from "./config.js";
-import { t } from "./state/i18n-bridge.js";
+import { COLLAPSE_KEY_OFF, getMaxWidgetLines, resolveCollapseKey } from "./config.ts";
+import { t } from "./state/i18n-bridge.ts";
 import {
 	KEEP_RECENT_COMPLETED,
 	selectActivePartition,
@@ -24,9 +24,9 @@ import {
 	selectOverlayTasks,
 	selectShowTaskIds,
 	selectTodoCounts,
-} from "./state/selectors.js";
-import { getRenderState } from "./state/store.js";
-import { formatOverlayTaskLine } from "./view/format.js";
+} from "./state/selectors.ts";
+import { getRenderState } from "./state/store.ts";
+import { formatOverlayTaskLine } from "./view/format.ts";
 
 const WIDGET_KEY = "rpiv-todos";
 
