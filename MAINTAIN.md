@@ -42,6 +42,35 @@ The script reads the source candidate and writes an empty output directory. It m
 
 A normal automated run requires a clean source worktree. `ALLOW_DIRTY_SOURCE=1` exists only for local dry-runs and records `source_dirty=true` in `.downstream-source`.
 
+## Releasing to ourselves
+
+**Every branch push must leave the corresponding `release/*` installable.** A patch branch that lands without a matching release-branch rebuild is a regression for whoever installs this fork — the installed package keeps the old behavior and silently ignores the new work.
+
+After pushing patch/feat branch changes:
+
+1. Trigger the sync workflow so the release branch re-projects with the new code:
+
+   ```sh
+   gh workflow run upstream-sync.yml --repo xz-dev/rpiv-mono --ref ci
+   ```
+
+   The cron at `2 21 * * *` also picks it up, but do not rely on it for active development — kick a manual run.
+
+2. Watch the run to confirm `rebuild-release` (and `rebuild-rpiv-todo` when that package changed) reached the `Commit and push rebuilt release branch` step:
+
+   ```sh
+   gh run list --repo xz-dev/rpiv-mono --workflow upstream-sync.yml --limit 1
+   ```
+
+3. Reinstall the moved ref in Pi to actually pick up the new commit (Pi pins Git refs):
+
+   ```sh
+   pi install git:github.com/xz-dev/rpiv-mono@release/ask-user-question
+   pi install git:github.com/xz-dev/rpiv-mono@release/rpiv-todo
+   ```
+
+If the validation step fails with a fixable error (formatter, missing test fixture, obvious type regression), fix it on the owning patch/feat branch — never only on `release/*`. If the failure is a pre-existing upstream breakage that our merge exposed (e.g. node_modules API drift, upstream test regression), document it in the commit message and consider whether the release can ship without that check; the workflow currently runs all three checks unconditionally, so a genuinely-broken-upstream build needs a manual projection per the script in `scripts/` or a workflow relaxation commit.
+
 ## Validation
 
 Source candidate:
