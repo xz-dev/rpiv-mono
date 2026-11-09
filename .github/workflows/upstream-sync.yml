@@ -36,9 +36,7 @@ jobs:
           # Fetch patch/release refs into local branches so the projection script's
           # `git rev-parse patch/<name>` provenance lookups resolve.
           git fetch origin \
-            patch/ask-bottom-pane:patch/ask-bottom-pane \
             patch/ask-ctrl-c-clear:patch/ask-ctrl-c-clear \
-            patch/ask-preserve-cursor:patch/ask-preserve-cursor \
             patch/ask-preview-scroll:patch/ask-preview-scroll \
             patch/ask-preview-scroll-keys:patch/ask-preview-scroll-keys \
             release/ask-user-question:release/ask-user-question
@@ -50,9 +48,7 @@ jobs:
 
           git checkout -B candidate upstream/main
           # Product patches in MAINTAIN.md declared order.
-          git merge --no-edit patch/ask-bottom-pane
           git merge --no-edit patch/ask-ctrl-c-clear
-          git merge --no-edit patch/ask-preserve-cursor
           git merge --no-edit patch/ask-preview-scroll
           git merge --no-edit patch/ask-preview-scroll-keys
 
